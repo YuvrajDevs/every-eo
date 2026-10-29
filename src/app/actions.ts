@@ -15,6 +15,7 @@ import { isStaff } from "@/lib/staff";
 import { createSession, destroySession, readSession } from "@/lib/session";
 import { clientIpFrom } from "@/lib/client-ip";
 import { sendVerificationEmail } from "@/lib/verification";
+import { parseRecipients, sendReport } from "@/lib/notify";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
 import { loadFixContext } from "@/lib/fix-context";
@@ -516,4 +517,33 @@ export async function resendVerification() {
   if (user.emailVerifiedAt) return;
   if (!rateLimit(`verify-resend:${user.id}`, 3, 60 * 60_000).ok) throw new Error("Too many emails sent. Try again in an hour.");
   await sendVerificationEmail(user, await appBaseUrl());
+}
+
+export async function saveNotifications(_: FormState, formData: FormData): Promise<FormState> {
+  const { org, role } = await requireUser();
+  requireManager(role);
+  const schedule = String(formData.get("reportSchedule") ?? "off");
+  if (!(SCHEDULES as readonly string[]).includes(schedule)) return { error: "Pick a report schedule.", values: keep(formData) };
+  const { emails, bad } = parseRecipients(String(formData.get("reportRecipients") ?? ""));
+  if (bad.length) return { error: `Not a valid email address: ${bad[0]}`, values: keep(formData) };
+  await db.organization.update({
+    where: { id: org.id },
+    data: {
+      alertEmails: formData.get("alertEmails") === "on",
+      reportSchedule: schedule,
+      reportRecipients: emails.join(", ") || null,
+      nextReportAt: schedule === org.reportSchedule && org.nextReportAt ? org.nextReportAt : nextRun(schedule, new Date()),
+    },
+  });
+  revalidatePath("/dashboard/notifications");
+  return undefined;
+}
+
+export async function sendTestReport(): Promise<FormState> {
+  const { org, role } = await requireUser();
+  requireManager(role);
+  const limited = limitFor(org.id, "test-report", 3, 60);
+  if (limited) return { error: limited };
+  const sent = await sendReport(org.id);
+  return sent ? { error: undefined, values: { sent: "yes" } } : { error: "No recipients yet: confirm your email or add report recipients." };
 }

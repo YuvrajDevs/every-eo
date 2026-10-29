@@ -7,6 +7,7 @@ import { runDueSchedules } from "@/worker/scheduler";
 import { crawlAlerts, visibilityAlerts } from "@/worker/alerts";
 import { truthCheck } from "@/worker/truth";
 import { runJudge } from "@/worker/judge";
+import { deliverAlerts, deliverDueReports } from "@/lib/notify";
 
 const POLL_MS = 2000;
 const MAX_ATTEMPTS = 3;
@@ -110,7 +111,14 @@ async function main() {
   process.on("SIGINT", () => (running = false));
   process.on("SIGTERM", () => (running = false));
   const active = new Set<Promise<void>>();
+  let lastMail = 0;
   while (running) {
+    // Email runs every 30 seconds, not every poll.
+    if (Date.now() - lastMail > 30_000) {
+      lastMail = Date.now();
+      await deliverAlerts().catch((err) => console.error("[worker] alert email:", err));
+      await deliverDueReports().catch((err) => console.error("[worker] reports:", err));
+    }
     await requeueStaleJobs();
     await runDueSchedules().catch((err) => console.error("[worker] scheduler:", err));
     let claimed = false;

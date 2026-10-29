@@ -4,7 +4,7 @@ import { spawn, execSync, type ChildProcess } from "node:child_process";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { createHmac } from "node:crypto";
-import { chromium, type Page, type Request as PwRequest } from "playwright-core";
+import { chromium, type Request as PwRequest } from "playwright-core";
 import { SignJWT } from "jose";
 
 const PORT = 3102;

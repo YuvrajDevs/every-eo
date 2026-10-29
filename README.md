@@ -76,9 +76,24 @@ All outbound fetches go through `src/lib/safe-fetch.ts`, which blocks internal/p
   - The worker runs `WORKER_CONCURRENCY` jobs in parallel, and several workers can share the queue safely.
   - `npm run load-test -- <audits> <concurrency> <workers>` runs audits of the local fixture site and checks every one completes exactly once.
 
+## Competitors and email
+
+- **Share of voice** (`src/lib/share-of-voice.ts`, `/dashboard/competitors/<site>`): how often you and each competitor are mentioned across AI answers, who leads each question, and the trend over time.
+- **Sentiment** (`src/lib/sentiment.ts`): each answer that mentions you is classed positive, neutral or negative.
+- **Email** (`src/lib/notify.ts`, `/dashboard/notifications`): alerts are emailed once each, and weekly or monthly client reports go to members plus extra recipients, branded with the agency's white-label. Set `SMTP_URL` and `MAIL_FROM`; without them mail is logged to the console.
+
+## Security
+
+- Sessions are stored server-side and revoked on logout or password change. Email must be verified, and staff access needs a verified email in `STAFF_EMAILS`.
+- Every page and route checks access itself; `tests/route-guards.test.ts` fails if one doesn't.
+- Rate limits apply per IP (in `src/proxy.ts`), per workspace, per API key and per login email. Bodies over 4 MB are refused.
+- A nonce-based CSP and the usual security headers are sent on every response.
+- `npm run build && npm run test:attack` runs a hostile suite: cross-tenant access, forged cookies, spoofed IPs, SSRF, oversized bodies, rate-limit bypass and more.
+
 ## Before production
 
 - Switch the Prisma datasource to Postgres. SQLite is the throughput ceiling in the load test, and the queue and rate limits assume one database and one web process.
 - Move the in-memory rate limits to a shared store (e.g. Redis) when running more than one web server.
-- Configure your proxy to overwrite `X-Forwarded-For`; the login rate limit trusts its first entry.
+- Set `TRUST_PROXY_HOPS` to the number of proxies in front of the app (0 if none); client IPs are read from the rightmost `X-Forwarded-For` entries.
+- Set `APP_URL` (required in production for email links).
 - The browser render check (Chromium) resolves DNS itself, so its address check happens per request, not per connection. Run it in an isolated network if that matters.

@@ -53,6 +53,11 @@ model Organization {
   brandLogoUrl String?
   brandColor   String?     // #rrggbb
   reportFooter String?
+  // Email: alerts as they happen, and a summary report on a schedule (off | weekly | monthly).
+  alertEmails       Boolean   @default(true)
+  reportSchedule    String    @default("off")
+  reportRecipients  String?   // extra addresses, comma-separated (e.g. the client's contacts)
+  nextReportAt      DateTime?
   parentId    String?      // the agency that owns this client workspace
   parent      Organization?  @relation("AgencyClients", fields: [parentId], references: [id], onDelete: Cascade)
   clients     Organization[] @relation("AgencyClients")
@@ -285,6 +290,7 @@ model Alert {
   detail    String
   link      String?
   readAt    DateTime?
+  emailedAt DateTime?
   org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   domain    Domain       @relation(fields: [domainId], references: [id], onDelete: Cascade)
   createdAt DateTime     @default(now())
