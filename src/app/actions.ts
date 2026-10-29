@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { createClientWorkspace, resolveAccess } from "@/lib/access";
 import { brandingSchema } from "@/lib/branding";
 import { createApiKey } from "@/lib/api";
+import { isStaff } from "@/lib/staff";
 import { createSession, destroySession } from "@/lib/session";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
@@ -416,4 +417,14 @@ export async function revokeKey(keyId: string) {
   const { org } = await requireUser();
   await db.apiKey.updateMany({ where: { id: keyId, orgId: org.id, revokedAt: null }, data: { revokedAt: new Date() } });
   revalidatePath("/dashboard/api");
+}
+
+export async function addStaffNote(orgId: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { user } = await requireUser();
+  if (!isStaff(user.email)) throw new Error("Not found");
+  const body = String(formData.get("body") ?? "").trim().slice(0, 2000);
+  if (!body) return { error: "Write a note first." };
+  await db.staffNote.create({ data: { orgId, author: user.email, body } });
+  revalidatePath(`/staff/${orgId}`);
+  return undefined;
 }

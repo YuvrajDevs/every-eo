@@ -43,6 +43,7 @@ model Organization {
   alerts      Alert[]
   fixes       Fix[]
   apiKeys     ApiKey[]
+  staffNotes  StaffNote[]
 }
 
 model Membership {
@@ -430,4 +431,14 @@ model ApiKey {
   revokedAt  DateTime?
   org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   createdAt  DateTime     @default(now())
+}
+
+// Internal notes by our account-success team about a workspace. Never shown to customers.
+model StaffNote {
+  id        String       @id @default(cuid())
+  orgId     String
+  author    String
+  body      String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
 }
