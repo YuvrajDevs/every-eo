@@ -21,6 +21,11 @@ model Organization {
   id          String       @id @default(cuid())
   name        String
   kind        String       @default("standard") // standard | agency | client (a client workspace owned by an agency)
+  // White-label branding (agencies); client workspaces inherit their agency's.
+  brandName    String?
+  brandLogoUrl String?
+  brandColor   String?     // #rrggbb
+  reportFooter String?
   parentId    String?      // the agency that owns this client workspace
   parent      Organization?  @relation("AgencyClients", fields: [parentId], references: [id], onDelete: Cascade)
   clients     Organization[] @relation("AgencyClients")

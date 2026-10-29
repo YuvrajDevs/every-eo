@@ -2,13 +2,17 @@ import { requireUser } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
 import { db } from "@/lib/db";
 import { switchWorkspace } from "@/app/actions";
+import { brandFor } from "@/lib/branding";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, org, agency } = await requireUser();
+  const brand = brandFor(org, agency);
+  // The agency's accent colour replaces ours for highlights, with readable text picked for it.
+  const style = brand.color ? ({ "--highlight": brand.color, "--on-highlight": brand.onColor } as React.CSSProperties) : undefined;
   const unreadAlerts = await db.alert.count({ where: { orgId: org.id, readAt: null } });
   return (
-    <div className="min-h-screen lg:flex">
-      <Sidebar userName={user.name} orgName={org.name} unreadAlerts={unreadAlerts} isAgency={org.kind === "agency"} />
+    <div className="min-h-screen lg:flex" style={style}>
+      <Sidebar userName={user.name} orgName={org.name} unreadAlerts={unreadAlerts} isAgency={org.kind === "agency"} brandName={brand.name} brandLogoUrl={brand.logoUrl} />
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 lg:px-10 lg:py-9">
         <div className="mx-auto max-w-6xl">
           {agency && (

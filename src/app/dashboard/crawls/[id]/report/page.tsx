@@ -7,6 +7,7 @@ import { engineInfo } from "@/lib/engines";
 import { pct, wilson } from "@/lib/stats";
 import { PrintButton } from "@/components/print-button";
 import { PLATFORM_LABELS, type PlatformId } from "@/lib/platforms";
+import { brandFor } from "@/lib/branding";
 
 const GRADES = [
   { key: "proven", label: "Proven", note: "Backed by platform documentation or consistent evidence. Fix these first." },
@@ -17,7 +18,8 @@ const SEVERITY = ["high", "medium", "low", "info"];
 
 export default async function ReportPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { org } = await requireUser();
+  const { org, agency } = await requireUser();
+  const brand = brandFor(org, agency);
   const crawl = await db.crawl.findFirst({ where: { id, orgId: org.id }, include: { domain: true, findings: true } });
   if (!crawl || crawl.status !== "completed") notFound();
 
@@ -44,6 +46,13 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
       </div>
 
       <header>
+        <div className="mb-4 flex items-center gap-3">
+          {brand.logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- agency logos are arbitrary external URLs
+            <img src={brand.logoUrl} alt="" width={40} height={40} referrerPolicy="no-referrer" className="size-10 object-contain" />
+          )}
+          <p className="font-display text-xl">{brand.name}</p>
+        </div>
         <p className="text-xs text-muted">Visibility audit · {crawl.createdAt.toLocaleDateString()}</p>
         <h1 className="mt-1 font-display text-5xl">{crawl.domain.hostname}</h1>
         <p className="mt-3 text-sm">
@@ -107,8 +116,9 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
         );
       })}
 
-      <footer className="border-t border-line pt-4 text-xs text-muted">
-        Evidence grades reflect published research and platform documentation. Answer readiness is a beta heuristic. No AI vendor publishes ranking data, so visibility figures are sampled estimates.
+      <footer className="space-y-2 border-t border-line pt-4 text-xs text-muted">
+        {brand.reportFooter && <p className="text-ink">{brand.reportFooter}</p>}
+        <p>Evidence grades reflect published research and platform documentation. Answer readiness is a beta heuristic. No AI vendor publishes ranking data, so visibility figures are sampled estimates.</p>
       </footer>
     </article>
   );

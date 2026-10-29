@@ -8,6 +8,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { createClientWorkspace, resolveAccess } from "@/lib/access";
+import { brandingSchema } from "@/lib/branding";
 import { createSession, destroySession } from "@/lib/session";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
@@ -372,4 +373,14 @@ export async function switchWorkspace(orgId: string) {
   if (!(await resolveAccess(user.id, orgId))) throw new Error("Workspace not found");
   await createSession({ userId: user.id, orgId });
   redirect("/dashboard");
+}
+
+export async function saveBranding(_: FormState, formData: FormData): Promise<FormState> {
+  const { org } = await requireUser();
+  if (org.kind !== "agency") return { error: "Branding is available to agency workspaces." };
+  const parsed = brandingSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  await db.organization.update({ where: { id: org.id }, data: parsed.data });
+  revalidatePath("/dashboard", "layout");
+  return undefined;
 }

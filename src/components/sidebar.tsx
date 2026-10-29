@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bell, Building2, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings, CreditCard } from "lucide-react";
+import { BarChart3, Bell, Building2, Palette, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings, CreditCard } from "lucide-react";
 import { logout } from "@/app/actions";
 import { APP_NAME } from "@/lib/brand";
 
@@ -20,19 +20,30 @@ const SOON = [
   { label: "Settings", icon: Settings },
 ];
 
-export function Logo() {
+export function Logo({ name = APP_NAME, logoUrl = null }: { name?: string; logoUrl?: string | null }) {
   return (
     <span className="flex items-center gap-2.5">
-      <span className="grid size-9 place-items-center rounded-xl bg-highlight text-on-highlight">
-        <Radar className="size-[18px]" strokeWidth={2} />
-      </span>
-      <span className="font-display text-xl">{APP_NAME}</span>
+      {logoUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- agency logos are arbitrary external URLs
+        <img src={logoUrl} alt="" width={36} height={36} referrerPolicy="no-referrer" className="size-9 rounded-xl object-contain" />
+      ) : (
+        <span className="grid size-9 place-items-center rounded-xl bg-highlight text-on-highlight">
+          <Radar className="size-[18px]" strokeWidth={2} />
+        </span>
+      )}
+      <span className="truncate font-display text-xl">{name}</span>
     </span>
   );
 }
 
-export function Sidebar({ userName, orgName, unreadAlerts = 0, isAgency = false }: { userName: string; orgName: string; unreadAlerts?: number; isAgency?: boolean }) {
-  const nav = isAgency ? [{ href: "/dashboard/clients", label: "Clients", icon: Building2, match: (p: string) => p.startsWith("/dashboard/clients") }, ...NAV] : NAV;
+export function Sidebar({ userName, orgName, unreadAlerts = 0, isAgency = false, brandName, brandLogoUrl }: { userName: string; orgName: string; unreadAlerts?: number; isAgency?: boolean; brandName?: string; brandLogoUrl?: string | null }) {
+  const nav = isAgency
+    ? [
+        { href: "/dashboard/clients", label: "Clients", icon: Building2, match: (p: string) => p.startsWith("/dashboard/clients") },
+        ...NAV,
+        { href: "/dashboard/branding", label: "Branding", icon: Palette, match: (p: string) => p.startsWith("/dashboard/branding") },
+      ]
+    : NAV;
   const pathname = usePathname();
   const initials = userName
     .split(" ")
@@ -46,7 +57,7 @@ export function Sidebar({ userName, orgName, unreadAlerts = 0, isAgency = false 
       {/* Desktop */}
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-line bg-panel px-5 py-7 lg:flex">
         <Link href="/dashboard" className="px-2">
-          <Logo />
+          <Logo name={brandName} logoUrl={brandLogoUrl} />
         </Link>
 
         <nav className="mt-10 flex flex-col gap-1">
@@ -98,7 +109,7 @@ export function Sidebar({ userName, orgName, unreadAlerts = 0, isAgency = false 
       {/* Mobile */}
       <header className="sticky top-0 z-10 border-b border-line bg-panel/95 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
-          <Link href="/dashboard"><Logo /></Link>
+          <Link href="/dashboard"><Logo name={brandName} logoUrl={brandLogoUrl} /></Link>
           <form action={logout}>
             <button aria-label="Log out" className="grid size-9 place-items-center rounded-full text-muted hover:text-ink">
               <LogOut className="size-4" strokeWidth={1.75} />
