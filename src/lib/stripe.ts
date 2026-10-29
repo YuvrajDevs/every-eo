@@ -26,13 +26,31 @@ async function stripe<T>(path: string, params: Record<string, string | undefined
   return json;
 }
 
-export async function createCheckout(org: { id: string; stripeCustomerId: string | null }, plan: Plan, email: string, baseUrl: string) {
+async function stripeGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${API}${path}`, { headers: { authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` }, signal: AbortSignal.timeout(20_000) });
+  const json = (await res.json()) as T & { error?: { message?: string } };
+  if (!res.ok) throw new Error(json.error?.message ?? `Stripe returned HTTP ${res.status}`);
+  return json;
+}
+
+// Agency plans are billed per client workspace: keep the subscription quantity equal to the client count (min 1).
+export async function syncAgencySeats(org: { stripeSubscriptionId: string | null }, clients: number) {
+  if (!billingEnabled() || !org.stripeSubscriptionId) return null;
+  const sub = await stripeGet<{ items: { data: { id: string; quantity: number }[] } }>(`/subscriptions/${encodeURIComponent(org.stripeSubscriptionId)}`);
+  const item = sub.items.data[0];
+  const quantity = Math.max(1, clients);
+  if (!item || item.quantity === quantity) return item?.quantity ?? null;
+  await stripe(`/subscription_items/${encodeURIComponent(item.id)}`, { quantity: String(quantity), proration_behavior: "create_prorations" });
+  return quantity;
+}
+
+export async function createCheckout(org: { id: string; stripeCustomerId: string | null }, plan: Plan, email: string, baseUrl: string, quantity = 1) {
   const price = priceFor(plan);
   if (!price) throw new Error(`No Stripe price is configured for ${plan.name} (set ${plan.priceEnv}).`);
   const session = await stripe<{ url: string }>("/checkout/sessions", {
     mode: "subscription",
     "line_items[0][price]": price,
-    "line_items[0][quantity]": "1",
+    "line_items[0][quantity]": String(Math.max(1, quantity)),
     client_reference_id: org.id,
     "metadata[orgId]": org.id,
     "subscription_data[metadata][orgId]": org.id,

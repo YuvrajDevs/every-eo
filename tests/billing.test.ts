@@ -162,3 +162,69 @@ test("a scheduled check over quota is skipped with an alert, not silently", asyn
     delete process.env.OPENAI_API_KEY;
   }
 });
+
+test("agency plans: client workspaces get the per-client allowance; trial agencies get 2 small clients", async () => {
+  const { planForOrg, PLANS } = await import("@/lib/plans");
+  const paid = planForOrg({ plan: "agency", kind: "agency" });
+  assert.equal(paid.maxClients, 100);
+  const client = planForOrg({ plan: "agency_client", kind: "client", parent: { plan: "agency" } });
+  assert.equal(client.monthlyAnswers, 4000);
+  assert.equal(client.name, "Agency client");
+  assert.equal(client.maxClients, undefined, "clients can't have clients");
+  const trialAgency = planForOrg({ plan: "trial", kind: "agency" });
+  assert.equal(trialAgency.maxClients, 2);
+  const trialClient = planForOrg({ plan: "agency_client", kind: "client", parent: { plan: "trial" } });
+  assert.equal(trialClient.monthlyAnswers, PLANS.trial.monthlyAnswers);
+  assert.equal(trialClient.name, "Trial client");
+  assert.equal(planForOrg({ plan: "growth", kind: "standard" }).maxClients, undefined);
+});
+
+test("client workspace quota uses the agency's allowance", async () => {
+  const { db } = await import("@/lib/db");
+  const { startVisibility } = await import("@/lib/jobs");
+  process.env.OPENAI_API_KEY = "k";
+  try {
+    const agency = await db.organization.create({ data: { name: "Ag", kind: "agency", plan: "agency" } });
+    const client = await db.organization.create({ data: { name: "C", kind: "client", parentId: agency.id, plan: "agency_client" } });
+    const domain = await db.domain.create({ data: { orgId: client.id, hostname: "client.com" } });
+    await db.prompt.create({ data: { domainId: domain.id, text: "q?" } });
+    assert.deepEqual(await startVisibility(client.id, domain.id, 10), { error: "Your Agency client plan allows up to 5 repeats per question." });
+    assert.ok("runId" in (await startVisibility(client.id, domain.id, 5)));
+  } finally {
+    delete process.env.OPENAI_API_KEY;
+  }
+});
+
+test("agency seat sync sets the Stripe quantity to the client count (min 1), and skips when unchanged", async () => {
+  const { syncAgencySeats, createCheckout } = await import("@/lib/stripe");
+  const { PLANS } = await import("@/lib/plans");
+  assert.equal(await syncAgencySeats({ stripeSubscriptionId: "sub_1" }, 3), null, "billing off → no calls");
+  process.env.STRIPE_SECRET_KEY = "sk_test_x";
+  process.env.STRIPE_PRICE_AGENCY_CLIENT = "price_agency";
+  const realFetch = globalThis.fetch;
+  const calls: { url: string; body?: string }[] = [];
+  let current = 2;
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    calls.push({ url, body: init?.body ? String(init.body) : undefined });
+    if (url.includes("/subscriptions/")) return Response.json({ items: { data: [{ id: "si_1", quantity: current }] } });
+    if (url.includes("/subscription_items/")) return Response.json({ id: "si_1" });
+    return Response.json({ url: "https://checkout.stripe.com/x" });
+  }) as typeof fetch;
+  try {
+    assert.equal(await syncAgencySeats({ stripeSubscriptionId: "sub_1" }, 3), 3);
+    assert.match(calls[1].url, /subscription_items\/si_1$/);
+    assert.match(calls[1].body!, /quantity=3/);
+    assert.match(calls[1].body!, /proration_behavior=create_prorations/);
+    calls.length = 0;
+    current = 1;
+    assert.equal(await syncAgencySeats({ stripeSubscriptionId: "sub_1" }, 0), 1, "zero clients still bills one seat");
+    assert.equal(calls.length, 1, "no update when quantity already matches");
+    calls.length = 0;
+    await createCheckout({ id: "o", stripeCustomerId: null }, PLANS.agency, "a@b.co", "https://app", 7);
+    assert.match(calls[0].body!, /line_items%5B0%5D%5Bquantity%5D=7/);
+    assert.match(calls[0].body!, /price_agency/);
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.STRIPE_SECRET_KEY;
+  }
+});

@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
-import { PLANS, planFor, priceFor } from "@/lib/plans";
+import { db } from "@/lib/db";
+import { PLANS, planForOrg, priceFor } from "@/lib/plans";
 import { usageThisMonth } from "@/lib/usage";
 import { billingEnabled } from "@/lib/stripe";
 import { openBillingPortal, startCheckout } from "@/app/actions";
@@ -24,9 +25,11 @@ function Meter({ label, used, limit }: { label: string; used: number; limit: num
 
 export default async function BillingPage({ searchParams }: { searchParams: Promise<{ checkout?: string }> }) {
   const { checkout } = await searchParams;
-  const { org } = await requireUser();
-  const plan = planFor(org.plan);
+  const { org, agency } = await requireUser();
+  const plan = planForOrg(org);
   const usage = await usageThisMonth(org.id);
+  const clientCount = org.kind === "agency" ? await db.organization.count({ where: { parentId: org.id } }) : 0;
+  const offered = Object.values(PLANS).filter((p) => p.id !== "trial" && (p.id === "agency") === (org.kind === "agency"));
   const enabled = billingEnabled();
 
   return (
@@ -47,6 +50,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           {org.planStatus && <p className="-mt-3 text-xs text-muted">Subscription {org.planStatus}{org.currentPeriodEnd ? ` · renews ${org.currentPeriodEnd.toLocaleDateString()}` : ""}</p>}
           <Meter label="AI answers this month" used={usage.answers} limit={plan.monthlyAnswers} />
           <Meter label="Websites" used={usage.sites} limit={plan.sites} />
+          {org.kind === "agency" && <Meter label="Client workspaces" used={clientCount} limit={plan.maxClients ?? 0} />}
           <p className="text-xs text-muted">
             {usage.audits} audits and {usage.fixes} fixes applied this month. Up to {plan.pagesPerAudit} pages per audit, {plan.promptsPerSite} questions per site, {plan.maxTrials} repeats per question.
           </p>
@@ -60,14 +64,16 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
           <SectionTitle>Plans</SectionTitle>
           {!enabled && <p className="mb-4 rounded-xl bg-panel px-3 py-2 text-xs text-muted">Online payment isn&apos;t set up yet. Add STRIPE_SECRET_KEY and a price ID per plan to enable upgrades.</p>}
           <ul className="space-y-2">
-            {Object.values(PLANS)
-              .filter((p) => p.id !== "trial")
-              .map((p) => (
+            {org.kind === "client" && <li className="rounded-2xl bg-panel p-4 text-sm">This workspace is billed through {agency?.name ?? "your agency"}.</li>}
+            {org.kind !== "client" &&
+              offered.map((p) => (
                 <li key={p.id} className="flex flex-col gap-3 rounded-2xl bg-panel p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-semibold">{p.name}</p>
                     <p className="text-xs text-muted">
-                      {p.sites} sites · {p.monthlyAnswers.toLocaleString()} AI answers/month · {p.pagesPerAudit} pages per audit · auto-fix
+                      {p.clientAllowance
+                        ? `Billed per client (${clientCount || 1} now) · each client: ${p.clientAllowance.sites} sites, ${p.clientAllowance.monthlyAnswers.toLocaleString()} AI answers/month · up to ${p.maxClients} clients · white-label`
+                        : `${p.sites} sites · ${p.monthlyAnswers.toLocaleString()} AI answers/month · ${p.pagesPerAudit} pages per audit · auto-fix`}
                     </p>
                   </div>
                   {p.id === plan.id ? (

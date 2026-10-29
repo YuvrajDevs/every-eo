@@ -21,8 +21,8 @@ import { judgeTargets } from "@/lib/judge-targets";
 import { checkAnswerQuota } from "@/lib/usage";
 import { enqueueJob } from "@/lib/queue";
 import { truthCheck } from "@/worker/truth";
-import { planFor, PLANS, type PlanId } from "@/lib/plans";
-import { createCheckout, createPortal } from "@/lib/stripe";
+import { planForOrg, PLANS, type PlanId } from "@/lib/plans";
+import { createCheckout, createPortal, syncAgencySeats } from "@/lib/stripe";
 import { applyFix, connectWordPress, rollbackFix, verifyFix } from "@/lib/fix-engine";
 import { normalizeHostname, UnsafeUrlError } from "@/lib/url-safety";
 
@@ -87,7 +87,7 @@ export async function addDomainAndCrawl(_: FormState, formData: FormData): Promi
     if (err instanceof UnsafeUrlError) return { error: err.message };
     throw err;
   }
-  const plan = planFor(org.plan);
+  const plan = planForOrg(org);
   const exists = await db.domain.findUnique({ where: { orgId_hostname: { orgId: org.id, hostname } } });
   if (!exists && (await db.domain.count({ where: { orgId: org.id } })) >= plan.sites) {
     return { error: `Your ${plan.name} plan includes ${plan.sites} ${plan.sites === 1 ? "site" : "sites"}. Upgrade on the Billing page to add more.` };
@@ -118,7 +118,7 @@ async function ownedDomain(domainId: string) {
 
 export async function addPrompt(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
   const { org, domain } = await ownedDomain(domainId);
-  const MAX_PROMPTS = planFor(org.plan).promptsPerSite;
+  const MAX_PROMPTS = planForOrg(org).promptsPerSite;
   const text = String(formData.get("text") ?? "").trim().replace(/\s+/g, " ");
   if (text.length < 5) return { error: "Write the question the way a customer would ask it." };
   if (text.length > 300) return { error: "Keep questions under 300 characters." };
@@ -156,7 +156,7 @@ export async function startVisibilityRun(domainId: string, _: FormState, formDat
 
 export async function setSchedules(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
   const { org, domain } = await ownedDomain(domainId);
-  const allowed = planFor(org.plan).schedules as string[];
+  const allowed = planForOrg(org).schedules as string[];
   const pick = (key: string) => {
     const v = String(formData.get(key) ?? "off");
     return (SCHEDULES as readonly string[]).includes(v) && (v === "off" || allowed.includes(v)) ? v : "off";
@@ -231,7 +231,7 @@ export async function disconnectWp(domainId: string) {
 // The proposal is rebuilt on the server from the latest audit; the browser only sends which one and any edited text.
 export async function applyProposedFix(domainId: string, key: string, _: FormState, formData: FormData): Promise<FormState> {
   const { org, domain, proposals } = await fixContext(domainId);
-  if (!planFor(org.plan).autoFix) return { error: "Automatic fixes aren't included in your plan." };
+  if (!planForOrg(org).autoFix) return { error: "Automatic fixes aren't included in your plan." };
   const proposal = proposals.find((p) => p.key === key);
   if (!proposal) return { error: "This fix is no longer suggested by the latest audit. Re-run the audit." };
   const text = proposal.editableText ? String(formData.get("text") ?? "") : undefined;
@@ -274,7 +274,9 @@ export async function startCheckout(planId: string) {
   const { org, user } = await requireUser();
   const plan = PLANS[planId as PlanId];
   if (!plan || plan.id === "trial") throw new Error("Unknown plan");
-  const url = await createCheckout(org, plan, user.email, await appBaseUrl());
+  if ((plan.id === "agency") !== (org.kind === "agency")) throw new Error("This plan isn't available for this workspace");
+  const clients = plan.id === "agency" ? await db.organization.count({ where: { parentId: org.id } }) : 1;
+  const url = await createCheckout(org, plan, user.email, await appBaseUrl(), clients);
   redirect(url);
 }
 
@@ -362,7 +364,18 @@ export async function addClient(_: FormState, formData: FormData): Promise<FormS
   if (org.kind !== "agency") return { error: "Only agency workspaces can add clients." };
   const name = String(formData.get("name") ?? "").trim().slice(0, 100);
   if (name.length < 2) return { error: "Enter the client's name." };
+  const plan = planForOrg(org);
+  const count = await db.organization.count({ where: { parentId: org.id } });
+  if (count >= (plan.maxClients ?? 0)) {
+    return { error: `Your ${plan.name} plan includes ${plan.maxClients} client workspaces. Upgrade to the Agency plan on the Billing page to add more.` };
+  }
   await createClientWorkspace(org.id, name);
+  try {
+    await syncAgencySeats(org, count + 1);
+  } catch (err) {
+    // The client exists either way; a failed seat update is retried the next time clients change.
+    console.error("[billing] seat sync failed:", err);
+  }
   revalidatePath("/dashboard/clients");
   return undefined;
 }

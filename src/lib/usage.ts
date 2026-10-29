@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { monthStart, planFor } from "@/lib/plans";
+import { monthStart, planForOrg } from "@/lib/plans";
 
 export async function usageThisMonth(orgId: string, now = new Date()) {
   const since = monthStart(now);
@@ -15,8 +15,8 @@ export async function usageThisMonth(orgId: string, now = new Date()) {
 }
 
 // Answers a run will use: every prompt × engine × trial. Checked before starting so a run never overshoots the quota.
-export async function checkAnswerQuota(org: { id: string; plan: string }, needed: number) {
-  const plan = planFor(org.plan);
+export async function checkAnswerQuota(org: { id: string; plan: string; kind: string; parent?: { plan: string } | null }, needed: number) {
+  const plan = planForOrg(org);
   const { answers } = await usageThisMonth(org.id);
   if (answers + needed > plan.monthlyAnswers) {
     return `This check needs ${needed} AI answers, but your ${plan.name} plan has ${Math.max(0, plan.monthlyAnswers - answers)} of ${plan.monthlyAnswers} left this month.`;
