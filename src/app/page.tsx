@@ -1,103 +1,74 @@
-import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight, Bot, ListChecks, ShieldCheck } from "lucide-react";
+import { Logo } from "@/components/sidebar";
+import { buttonClass, TONES, type Tone } from "@/components/ui";
+
+const FEATURES: { title: string; body: string; tone: Tone; icon: typeof Bot }[] = [
+  {
+    title: "Can AI find you?",
+    body: "We check whether ChatGPT, Claude, Perplexity, Gemini and Google's crawlers are allowed to read your site.",
+    tone: "lavender",
+    icon: Bot,
+  },
+  {
+    title: "What's holding you back?",
+    body: "Every page is audited for the technical and content issues that stop you ranking or being cited.",
+    tone: "peach",
+    icon: ListChecks,
+  },
+  {
+    title: "How sure are we?",
+    body: "Each fix is labelled by how strong the evidence is that it works. No fake promises.",
+    tone: "mint",
+    icon: ShieldCheck,
+  },
+];
 
 export default function Home() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-6 sm:px-8">
+      <header className="flex items-center justify-between">
+        <Logo />
+        <nav className="flex items-center gap-2">
+          <Link href="/login" className="rounded-full px-4 py-2.5 text-muted hover:text-ink">Log in</Link>
+          <Link href="/signup" className={buttonClass}>Get started</Link>
+        </nav>
+      </header>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+      <section className="py-16 sm:py-24">
+        <h1 className="max-w-4xl font-display text-5xl leading-[1.3] sm:text-7xl sm:leading-[1.3]">
+          Show up in Google <br className="hidden sm:block" />
+          and in <span className="rounded-3xl bg-highlight box-decoration-clone px-3 text-on-highlight">AI answers.</span>
+        </h1>
+        <p className="mt-6 max-w-xl text-muted">
+          Connect your website. We audit it for search engines and AI assistants, tell you exactly what to fix, and track whether it&apos;s working.
+        </p>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Link href="/signup" className={buttonClass}>
+            Audit my site <ArrowRight className="size-4" />
+          </Link>
+          <Link href="/login" className="inline-flex items-center rounded-full border border-line bg-surface px-5 py-3 hover:border-ink">
+            I have an account
+          </Link>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      </section>
+
+      <section className="grid gap-3 pb-16 md:grid-cols-3">
+        {FEATURES.map(({ title, body, tone, icon: Icon }, i) => (
+          <div key={title} className={`flex min-h-[240px] flex-col justify-between rounded-3xl p-6 ${TONES[tone]}`}>
+            <div className="flex items-start justify-between">
+              <span className="grid size-11 place-items-center rounded-full bg-surface/80">
+                <Icon className="size-5" strokeWidth={1.75} />
+              </span>
+              <span className="text-xs text-ink/50">0{i + 1}</span>
+            </div>
+            <div>
+              <h2 className="font-display text-2xl">{title}</h2>
+              <p className="mt-2 text-xs leading-relaxed text-ink/70">{body}</p>
+            </div>
+          </div>
+        ))}
+      </section>
+    </main>
   );
 }

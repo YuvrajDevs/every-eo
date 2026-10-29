@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  memberships  Membership[]
+}
+
+// One workspace per client business, or per agency (which later manages many client domains).
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  plan        String       @default("trial")
+  createdAt   DateTime     @default(now())
+  memberships Membership[]
+  domains     Domain[]
+  crawls      Crawl[]
+  jobs        Job[]
+  apiCalls    ApiCallLog[]
+}
+
+model Membership {
+  id        String       @id @default(cuid())
+  role      String       @default("owner")
+  userId    String
+  orgId     String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, orgId])
+}
+
+model Domain {
+  id             String          @id @default(cuid())
+  orgId          String
+  hostname       String
+  brandName      String?
+  org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  crawls         Crawl[]
+  prompts        Prompt[]
+  visibilityRuns VisibilityRun[]
+  createdAt      DateTime        @default(now())
+
+  @@unique([orgId, hostname])
+}
+
+// A question a real customer might ask an AI assistant, tracked per domain.
+model Prompt {
+  id        String             @id @default(cuid())
+  domainId  String
+  text      String
+  domain    Domain             @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  results   VisibilityResult[]
+  createdAt DateTime           @default(now())
+
+  @@index([domainId])
+}
+
+model VisibilityRun {
+  id         String             @id @default(cuid())
+  orgId      String
+  domainId   String
+  status     String             @default("queued") // queued | running | completed | failed
+  trials     Int                @default(3)
+  engines    String             // comma-separated engine ids
+  costMicros Int                @default(0)
+  error      String?
+  domain     Domain             @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  results    VisibilityResult[]
+  createdAt  DateTime           @default(now())
+  finishedAt DateTime?
+
+  @@index([domainId, createdAt])
+}
+
+// One answer from one engine for one prompt on one trial.
+model VisibilityResult {
+  id         String        @id @default(cuid())
+  runId      String
+  promptId   String
+  engine     String
+  trial      Int
+  mentioned  Boolean       @default(false)
+  cited      Boolean       @default(false)
+  citedUrls  String?       // JSON array of {url,title}
+  answer     String?
+  error      String?
+  costMicros Int           @default(0)
+  run        VisibilityRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  prompt     Prompt        @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  createdAt  DateTime      @default(now())
+
+  @@index([runId])
+}
+
+model Crawl {
+  id          String       @id @default(cuid())
+  orgId       String
+  domainId    String
+  status      String       @default("queued") // queued | running | completed | failed
+  maxPages    Int          @default(50)
+  pagesCount  Int          @default(0)
+  error       String?
+  performance String?      // JSON PerformanceReport for the homepage
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  domain      Domain       @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  pages       Page[]
+  findings    Finding[]
+  robots      RobotsReport?
+  createdAt   DateTime     @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+
+  @@index([orgId, createdAt])
+}
+
+model Page {
+  id              String   @id @default(cuid())
+  crawlId         String
+  url             String
+  statusCode      Int?
+  title           String?
+  metaDescription String?
+  h1Count         Int      @default(0)
+  h1              String?
+  canonical       String?
+  metaRobots      String?
+  jsonLdCount     Int      @default(0)
+  jsonLdTypes     String? // comma-separated @type values
+  wordCount       Int      @default(0)
+  answerScore     Int?
+  answerSignals   String?  // JSON AnswerSignals
+  crawl           Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  fetchedAt       DateTime @default(now())
+
+  @@unique([crawlId, url])
+}
+
+model RobotsReport {
+  id          String  @id @default(cuid())
+  crawlId     String  @unique
+  robotsUrl   String
+  httpStatus  Int?
+  found       Boolean @default(false)
+  sitemaps    String? // newline-separated
+  botAccess   String  // JSON array of BotAccessResult
+  crawl       Crawl   @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+}
+
+model Finding {
+  id        String   @id @default(cuid())
+  crawlId   String
+  layer     String   // seo | aeo | geo
+  code      String
+  severity  String   // high | medium | low | info
+  evidence  String   // proven | plausible | speculative
+  title     String
+  detail    String
+  url       String?
+  crawl     Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([crawlId])
+}
+
+// Database-backed job queue; swap for BullMQ/Redis when scale needs it.
+model Job {
+  id         String       @id @default(cuid())
+  orgId      String
+  type       String
+  payload    String       // JSON
+  status     String       @default("queued") // queued | running | completed | failed
+  attempts   Int          @default(0)
+  runAt      DateTime     @default(now())
+  lockedAt   DateTime?
+  error      String?
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+  finishedAt DateTime?
+
+  @@index([status, runAt])
+}
+
+// Every billable external call, per client, so tier pricing is based on real cost.
+model ApiCallLog {
+  id        String       @id @default(cuid())
+  orgId     String
+  provider  String       // e.g. openai, anthropic, gemini, perplexity, psi, crawl
+  operation String
+  units     Int          @default(1)
+  costMicros Int         @default(0) // USD * 1,000,000
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@index([orgId, createdAt])
+}
