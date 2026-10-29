@@ -8,6 +8,9 @@ import type { BotAccessResult, BotPurpose } from "@/lib/ai-bots";
 import type { PerformanceReport } from "@/worker/performance";
 import { recrawl } from "@/app/actions";
 import { PLATFORM_LABELS, type PlatformId } from "@/lib/platforms";
+import { estimateMicros, judgeModel } from "@/lib/judge";
+import { judgeTargets } from "@/lib/judge-targets";
+import { JudgeForm } from "@/components/judge-form";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Card, EvidenceBadge, LayerBadge, ScoreRing, SectionTitle, SeverityBadge, StatTile, StatusPill } from "@/components/ui";
 
@@ -35,7 +38,7 @@ export default async function CrawlPage({
   const { org } = await requireUser();
   const crawl = await db.crawl.findFirst({
     where: { id, orgId: org.id },
-    include: { domain: true, robots: true, findings: true, pages: { orderBy: { url: "asc" } } },
+    include: { domain: { include: { prompts: true } }, robots: true, findings: true, pages: { orderBy: { url: "asc" } }, judgeRuns: { orderBy: { createdAt: "desc" }, take: 1, include: { results: true } } },
   });
   if (!crawl) notFound();
 
@@ -50,6 +53,10 @@ export default async function CrawlPage({
   const brokenPages = crawl.pages.filter((p) => (p.statusCode ?? 0) >= 400).length;
   const perf: PerformanceReport | null = crawl.performance ? JSON.parse(crawl.performance) : null;
   const scored = crawl.pages.filter((p) => p.answerScore !== null && p.wordCount >= 200);
+  const judgeRun = crawl.judgeRuns[0] ?? null;
+  const targets = judgeTargets(crawl.pages, crawl.domain.prompts.map((p) => p.text));
+  const model = judgeModel();
+  const estimate = `$${(estimateMicros(model, targets.map((t) => t.chars)) / 1_000_000).toFixed(3)}`;
   const answerAvg = scored.length ? Math.round(scored.reduce((n, p) => n + (p.answerScore ?? 0), 0) / scored.length) : null;
 
   return (
@@ -289,6 +296,43 @@ export default async function CrawlPage({
           </Card>
         )}
       </div>
+
+      {done && targets.length > 0 && (
+        <Card>
+          <SectionTitle>AI extractability check (beta)</SectionTitle>
+          <p className="-mt-2 mb-4 max-w-2xl text-xs text-muted">
+            Asks a small AI model whether each page contains a short passage that answers its question, and makes it show the passage. A passage it can&apos;t point to on the page is discarded. This is a heuristic, not how any engine actually ranks, and it costs a little on your API key, so it only runs when you start it.
+          </p>
+          {judgeRun && (judgeRun.status === "queued" || judgeRun.status === "running") ? (
+            <p className="text-sm">Checking {judgeRun.results.length} pages… refresh in a minute.</p>
+          ) : (
+            <JudgeForm crawlId={crawl.id} pages={targets.length} estimate={estimate} model={model} enabled={Boolean(process.env.ANTHROPIC_API_KEY)} />
+          )}
+          {judgeRun?.status === "failed" && <p className="mt-2 text-xs text-high">Last check failed: {judgeRun.error}</p>}
+          {judgeRun?.status === "completed" && (
+            <div className="mt-4 space-y-2">
+              <p className="text-[11px] text-muted">
+                Checked {judgeRun.createdAt.toLocaleString()} with {judgeRun.model} · actual cost ${(judgeRun.costMicros / 1_000_000).toFixed(3)}
+              </p>
+              <ul className="space-y-2">
+                {judgeRun.results.map((r) => (
+                  <li key={r.id} className="rounded-2xl bg-panel p-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] ${r.error ? "bg-rose text-high" : (r.score ?? 0) >= 7 ? "bg-mint text-ok" : (r.score ?? 0) >= 4 ? "bg-peach" : "bg-rose text-high"}`}>
+                        {r.error ? "error" : `${r.score}/10`}
+                      </span>
+                      <span className="truncate font-semibold">{new URL(r.url).pathname}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted">Question: {r.question}</p>
+                    {r.quote && r.quoteFound && <blockquote className="mt-1 border-l-2 border-line pl-3 text-xs italic">{r.quote}</blockquote>}
+                    <p className="mt-1 text-xs">{r.error ?? r.rationale}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Card>
+      )}
 
       {crawl.pages.length > 0 && (
         <Card>

@@ -14,6 +14,10 @@ import { loadFixContext } from "@/lib/fix-context";
 import { parseFactsForm } from "@/lib/truth-form";
 import { parseGscQueries } from "@/lib/discovery";
 import { parseDailyCsv, SEARCH_SOURCES } from "@/lib/attribution";
+import { estimateMicros, judgeModel } from "@/lib/judge";
+import { judgeTargets } from "@/lib/judge-targets";
+import { checkAnswerQuota } from "@/lib/usage";
+import { enqueueJob } from "@/lib/queue";
 import { truthCheck } from "@/worker/truth";
 import { planFor, PLANS, type PlanId } from "@/lib/plans";
 import { createCheckout, createPortal } from "@/lib/stripe";
@@ -326,5 +330,26 @@ export async function importSearchDays(domainId: string, _: FormState, formData:
     db.searchDay.createMany({ data: days.map((d) => ({ domainId: domain.id, source, ...d })) }),
   ]);
   revalidatePath(`/dashboard/attribution/${domain.id}`);
+  return undefined;
+}
+
+// Paid and opt-in: the form must carry the user's explicit confirmation, and the plan quota must cover every page.
+export async function startJudgeRun(crawlId: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { org } = await requireUser();
+  if (formData.get("confirm") !== "yes") return { error: "Tick the box to confirm you want to use your Anthropic API key for this check." };
+  if (!process.env.ANTHROPIC_API_KEY) return { error: "Add ANTHROPIC_API_KEY to .env to run this check." };
+  const crawl = await db.crawl.findFirst({ where: { id: crawlId, orgId: org.id, status: "completed" }, include: { pages: true, domain: { include: { prompts: true } } } });
+  if (!crawl) return { error: "Audit not found." };
+  if (await db.judgeRun.findFirst({ where: { crawlId, status: { in: ["queued", "running"] } } })) return { error: "A check is already running for this audit." };
+  const targets = judgeTargets(crawl.pages, crawl.domain.prompts.map((p) => p.text));
+  if (!targets.length) return { error: "No content pages with enough text to check." };
+  const quota = await checkAnswerQuota(org, targets.length);
+  if (quota) return { error: quota };
+  const model = judgeModel();
+  const run = await db.judgeRun.create({
+    data: { crawlId, orgId: org.id, model, estimateMicros: estimateMicros(model, targets.map((t) => t.chars)), results: { create: targets.map((t) => ({ url: t.url, question: t.question })) } },
+  });
+  await enqueueJob(org.id, "judge", { judgeRunId: run.id });
+  revalidatePath(`/dashboard/crawls/${crawlId}`);
   return undefined;
 }

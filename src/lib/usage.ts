@@ -3,13 +3,15 @@ import { monthStart, planFor } from "@/lib/plans";
 
 export async function usageThisMonth(orgId: string, now = new Date()) {
   const since = monthStart(now);
-  const [answers, audits, fixes, sites] = await Promise.all([
+  const [visibilityAnswers, judgeAnswers, audits, fixes, sites] = await Promise.all([
     db.visibilityResult.count({ where: { run: { orgId }, createdAt: { gte: since } } }),
+    db.judgeResult.count({ where: { run: { orgId, createdAt: { gte: since } } } }),
     db.crawl.count({ where: { orgId, createdAt: { gte: since } } }),
     db.fix.count({ where: { orgId, appliedAt: { gte: since } } }),
     db.domain.count({ where: { orgId } }),
   ]);
-  return { answers, audits, fixes, sites };
+  // Extractability judgements are AI answers too, so they share the monthly quota.
+  return { answers: visibilityAnswers + judgeAnswers, audits, fixes, sites };
 }
 
 // Answers a run will use: every prompt × engine × trial. Checked before starting so a run never overshoots the quota.

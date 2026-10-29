@@ -142,6 +142,7 @@ model Crawl {
   pages       Page[]
   findings    Finding[]
   robots      RobotsReport?
+  judgeRuns   JudgeRun[]
   createdAt   DateTime     @default(now())
   startedAt   DateTime?
   finishedAt  DateTime?
@@ -373,4 +374,35 @@ model SearchDay {
   domain      Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
 
   @@unique([domainId, source, date])
+}
+
+// Optional, paid "could an AI quote an answer from this page?" check (beta). Only runs when a user starts it.
+model JudgeRun {
+  id            String        @id @default(cuid())
+  crawlId       String
+  orgId         String
+  status        String        @default("queued") // queued | running | completed | failed
+  model         String
+  estimateMicros Int          @default(0)
+  costMicros    Int           @default(0)
+  error         String?
+  crawl         Crawl         @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  results       JudgeResult[]
+  createdAt     DateTime      @default(now())
+  finishedAt    DateTime?
+}
+
+model JudgeResult {
+  id          String   @id @default(cuid())
+  judgeRunId  String
+  url         String
+  question    String
+  answerable  Boolean?
+  score       Int?     // 0-10
+  quote       String?
+  quoteFound  Boolean? // the quote really appears on the page (guards against invented quotes)
+  rationale   String?
+  error       String?
+  costMicros  Int      @default(0)
+  run         JudgeRun @relation(fields: [judgeRunId], references: [id], onDelete: Cascade)
 }

@@ -6,6 +6,7 @@ import { runVisibility } from "@/worker/visibility/run";
 import { runDueSchedules } from "@/worker/scheduler";
 import { crawlAlerts, visibilityAlerts } from "@/worker/alerts";
 import { truthCheck } from "@/worker/truth";
+import { runJudge } from "@/worker/judge";
 
 const POLL_MS = 2000;
 const MAX_ATTEMPTS = 3;
@@ -54,6 +55,8 @@ async function execute(type: string, payload: unknown) {
       await safeAlerts(() => visibilityAlerts(runId));
       return safeAlerts(() => truthCheck(runId));
     }
+    case "judge":
+      return runJudge((payload as JobPayloads["judge"]).judgeRunId);
     default:
       throw new Error(`Unknown job type: ${type}`);
   }
@@ -67,8 +70,8 @@ async function processJob(job: NonNullable<Awaited<ReturnType<typeof claimNextJo
     console.log(`[worker] ${job.type} ${job.id} completed`);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    // Visibility runs spend money on every call, so they never retry automatically.
-    const finalFailure = job.attempts >= MAX_ATTEMPTS || job.type === "visibility";
+    // Visibility and judge runs spend money on every call, so they never retry automatically.
+    const finalFailure = job.attempts >= MAX_ATTEMPTS || job.type === "visibility" || job.type === "judge";
     await db.job.update({
       where: { id: job.id },
       data: finalFailure
@@ -84,6 +87,12 @@ async function processJob(job: NonNullable<Awaited<ReturnType<typeof claimNextJo
     if (finalFailure && job.type === "visibility") {
       await db.visibilityRun.update({
         where: { id: (payload as JobPayloads["visibility"]).runId },
+        data: { status: "failed", error: message, finishedAt: new Date() },
+      });
+    }
+    if (finalFailure && job.type === "judge") {
+      await db.judgeRun.update({
+        where: { id: (payload as JobPayloads["judge"]).judgeRunId },
         data: { status: "failed", error: message, finishedAt: new Date() },
       });
     }
