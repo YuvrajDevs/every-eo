@@ -33,6 +33,8 @@ npm test
 
 Unit tests plus an end-to-end audit against a local fixture site that plants known problems (blocked bots, a firewall that rejects one bot, broken pages, bad schema, a JavaScript-only page) and a visibility run against stubbed AI APIs. It binds port 80 on localhost. Set `CHROMIUM_PATH` to use a specific Chromium for the JavaScript-rendering check; set `RENDER_CHECK=off` to skip the browser and use the HTML heuristic.
 
+`npm run build && npm run test:ui` runs the whole stack (built website, worker process, real browser, fixture site): sign-up and login, adding sites, the audit through the worker, the visibility screens, and checks that one organization can't see another's data. It binds ports 80 and 3100.
+
 ## Safety
 
 All outbound fetches go through `src/lib/safe-fetch.ts`, which blocks internal/private network addresses on every redirect hop so users can't point the crawler at internal systems.
