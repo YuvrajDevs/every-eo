@@ -1,4 +1,4 @@
-# Visibility platform (Phases 0–2)
+# Visibility platform (Phases 0–3)
 
 Web app + background worker that audits a website for search engines and AI assistants.
 
@@ -35,6 +35,16 @@ npm run worker:dev   # background worker that runs audits
   - Shopify: OAuth app + theme app embed in `integrations/shopify` (deploy with the Shopify CLI using `shopify.app.toml`). Structured data only; other fixes are shown as steps.
   - Other builders: copy-paste code and platform-specific instructions.
 - **Plans and billing** (`src/lib/plans.ts`, `src/lib/stripe.ts`): per-plan limits (sites, pages, prompts, repeats, monthly AI answers, auto-fix). Prices live in Stripe; set one price ID per plan. Webhook: `/api/stripe/webhook`.
+
+## Phase 3 features
+
+All of these read data already collected or imported, so they make no AI calls, except the judge, which is opt-in.
+
+- **Accuracy monitor** (`src/lib/truth.ts`, `/dashboard/truth/[id]`): checks stored AI answers against facts you enter. It flags wrong prices, a wrong founding year, discontinued products presented as current, and your claims or statistics credited to a competitor.
+- **Question discovery** (`src/lib/discovery.ts`): suggests questions to track from question-style headings on your site, an imported Search Console Queries.csv (non-branded, by impressions), and category templates.
+- **Attribution** (`src/lib/attribution.ts`, `/dashboard/attribution/[id]`): imports daily Search Console or Bing exports and compares the weekly AI mention rate with branded clicks, using Spearman's ρ with a permutation test at lags of 0–2 weeks. It needs at least 6 overlapping weeks and states correlation, not cause. It also shows branded clicks before and after the first fix went live.
+- **Third-party presence** (`src/lib/presence.ts`, `/dashboard/presence/[id]`): ranks review sites, communities and reference works by how often AI cited them versus the profiles you list, plus publications AI cites in your space. It provides honest how-tos and templates; nothing is posted automatically.
+- **Extractability judge, beta** (`src/lib/judge.ts`, `src/worker/judge.ts`): asks Claude Haiku 5.5 whether a short passage on each page answers its question, and discards verdicts whose quote isn't actually on the page. It needs `ANTHROPIC_API_KEY`, an explicit confirmation and quota, and shows the estimated cost before running (well under a cent per page). Override the model with `JUDGE_MODEL`.
 
 ## Tests
 

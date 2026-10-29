@@ -45,6 +45,7 @@ test("stolen claim: flagged when credited to a competitor or unnamed with other 
   assert.equal(unnamed[0]?.credited, "rivalmail.com");
   assert.deepEqual(kinds("Acme Mail scans over 2 million letters a year for 40% less than a PO box."), []);
   assert.deepEqual(kinds("Acme Mail is popular. It scans over 2 million letters a year for 40% less than a PO box."), [], "previous sentence names us");
+  assert.deepEqual(kinds("Acme Mail costs $29. Rival Mail scans over 2 million letters a year for 40% less than a PO box."), ["stolen_claim"], "a rival named in the sentence itself overrides the previous sentence");
   assert.deepEqual(kinds("Rival Mail scans 3 million letters a year for 40% less than a PO box."), [], "different number → not our claim");
   assert.deepEqual(kinds("One service scans 2 million letters a year for 40% less than a PO box."), [], "no other source cited → can't say who got credit");
 });

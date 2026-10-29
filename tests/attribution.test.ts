@@ -53,6 +53,7 @@ test("association needs 6 overlapping weeks and supports a lag", () => {
   assert.equal(same.weeks, 10);
   assert.equal(same.rho, 1);
   assert.ok(same.p < 0.01);
+  assert.match(describe(same), /p < 0\.001/);
   assert.match(describe(same), /rose and fell with AI mentions the same week \(strong.*is unlikely to be chance.*doesn't show/);
   const lagged = associate(vis, clicks, 2)!;
   assert.equal(lagged.weeks, 8);

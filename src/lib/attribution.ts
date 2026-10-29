@@ -144,7 +144,7 @@ export function describe(a: Association) {
   const dir = a.rho >= 0 ? "rose and fell with" : "moved opposite to";
   const lag = a.lagWeeks === 0 ? "the same week" : `${a.lagWeeks} week${a.lagWeeks > 1 ? "s" : ""} later`;
   const chance = a.p < 0.05 ? "is unlikely to be chance alone" : "could easily be chance";
-  return `Across ${a.weeks} weeks, branded search clicks ${dir} AI mentions ${lag} (${strength}, ρ = ${a.rho.toFixed(2)}, p = ${a.p.toFixed(3)}); this ${chance}. Correlation doesn't show the AI mentions caused it.`;
+  return `Across ${a.weeks} weeks, branded search clicks ${dir} AI mentions ${lag} (${strength}, ρ = ${a.rho.toFixed(2)}, ${a.p < 0.001 ? "p < 0.001" : `p = ${a.p.toFixed(3)}`}); this ${chance}. Correlation doesn't show the AI mentions caused it.`;
 }
 
 // Average weekly branded clicks in the N complete weeks before and after a date (e.g. when fixes went live).

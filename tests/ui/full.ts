@@ -3,6 +3,7 @@
 import { spawn, execSync, type ChildProcess } from "node:child_process";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import path from "node:path";
 import { chromium, type Page } from "playwright-core";
 import { startFixture } from "../fixture";
 
@@ -104,12 +105,15 @@ async function main() {
 
   console.log("Adding sites");
   await a.goto(`${BASE}/dashboard/sites`);
+  const settled = () => a.waitForFunction(() => !document.querySelector("form:has(input[name=domain]) button")?.hasAttribute("disabled"));
   for (const bad of ["localhost", "10.0.0.1", "intranet.local", "nodots"]) {
+    await a.goto(`${BASE}/dashboard/sites`); // fresh form each time, so an earlier error can't satisfy the wait
     await a.fill("input[name=domain]", bad);
     await a.click("form:has(input[name=domain]) button");
     await a.waitForSelector("text=public website", { timeout: 5000 }).catch(async () => {
       assert.fail(`no error for ${bad}: ${(await text(a)).slice(0, 200)}`);
     });
+    await settled();
   }
   step("localhost / private IP / .local / dotless rejected");
 
@@ -303,11 +307,93 @@ async function main() {
   assert.equal(await db.domain.count({ where: { orgId: org.id } }), 3);
   step("site limit enforced at the plan's 3 sites");
 
+  console.log("Phase 3: accuracy, discovery, attribution, presence, judge");
+  const tmp = path.resolve(".ui-test-tmp");
+  fs.mkdirSync(tmp, { recursive: true });
+  // Eight weekly runs with stored answers; mention rate rises week by week. The latest has a wrong price.
+  const promptRow = await db.prompt.findFirstOrThrow({ where: { domainId: domain.id } });
+  const monday = (weeksAgo: number) => {
+    const d = new Date();
+    d.setUTCHours(12, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7) - 7 * weeksAgo);
+    return d;
+  };
+  for (let w = 8; w >= 1; w--) {
+    const r = await db.visibilityRun.create({ data: { orgId: org.id, domainId: domain.id, engines: "chatgpt", trials: 4, status: "completed", createdAt: monday(w) } });
+    const mentions = 9 - w; // 1..8 of 8
+    await db.visibilityResult.createMany({
+      data: Array.from({ length: 8 }, (_, i) => ({
+        runId: r.id,
+        promptId: promptRow.id,
+        engine: "chatgpt",
+        trial: i + 1,
+        mentioned: i < mentions,
+        answer: w === 1 && i === 0 ? "Acme Mail costs $39 a month. Rival Mail scans over 2 million letters a year for 40% less than a PO box." : "Some answer.",
+        citedUrls: JSON.stringify([{ url: "https://www.g2.com/products/rival" }, { url: "https://www.techradar.com/best/mail" }]),
+        createdAt: monday(w),
+      })),
+    });
+  }
+
+  await a.goto(`${BASE}/dashboard/truth/${domain.id}`);
+  await a.fill("textarea[name=prices]", "Starter | 29 | USD");
+  await a.fill("textarea[name=claims]", "We scan over 2 million letters a year for 40% less than a PO box");
+  await a.fill("textarea[name=competitors]", "Rival Mail");
+  await a.click("button:has-text('Save and re-check answers')");
+  await waitFor(async () => (await db.factsRecord.count({ where: { domainId: domain.id } })) === 1, "facts saved", 15_000).catch(async () => assert.fail(`facts not saved: ${(await text(a)).slice(0, 1500)}`));
+  await a.waitForSelector("text=Wrong prices");
+  body = await text(a);
+  assert.ok(body.includes("Acme Mail costs $39 a month.") && body.includes("Your claims credited to others"), body.slice(body.indexOf("Findings"), body.indexOf("Findings") + 600));
+  step("accuracy monitor: facts saved, latest stored answers re-checked, wrong price and stolen claim shown");
+
+  const gscQueries = path.join(tmp, "Queries.csv");
+  fs.writeFileSync(gscQueries, 'Top queries,Clicks,Impressions,CTR,Position\n"best virtual mailbox for travelers",3,"2,400",0.1%,9.1\nacme mail login,30,90,33%,1\n');
+  await a.goto(`${BASE}/dashboard/visibility/${domain.id}`);
+  await a.click("summary:has-text('Import Search Console queries')");
+  await a.setInputFiles("input[aria-label='Search Console Queries CSV']", gscQueries);
+  await a.click("button:has-text('Import queries')");
+  await a.waitForSelector("text=best virtual mailbox for travelers");
+  assert.ok(!(await text(a)).includes("acme mail login"), "branded query not suggested");
+  const before = await db.prompt.count({ where: { domainId: domain.id } });
+  await a.click(`button[aria-label='Track "best virtual mailbox for travelers"']`);
+  await waitFor(async () => (await db.prompt.count({ where: { domainId: domain.id } })) === before + 1, "suggestion tracked", 10_000);
+  step("Search Console import suggests non-branded questions; Track adds one");
+
+  const dates = path.join(tmp, "Dates.csv");
+  const rows = ["Date,Clicks,Impressions,CTR,Position"];
+  for (let w = 8; w >= 1; w--) for (let d = 0; d < 7; d++) {
+    const day = monday(w);
+    day.setUTCDate(day.getUTCDate() + d);
+    rows.push(`${day.toISOString().slice(0, 10)},${10 + (9 - w) * 3},${200},1%,3`);
+  }
+  fs.writeFileSync(dates, rows.join("\n"));
+  await a.goto(`${BASE}/dashboard/attribution/${domain.id}`);
+  await a.selectOption("select[name=source]", "gsc_branded");
+  await a.setInputFiles("input[aria-label='Daily performance CSV']", dates);
+  await a.click("button:has-text('Import')");
+  await a.waitForSelector("text=rose and fell with AI mentions the same week");
+  body = await text(a);
+  assert.ok(body.includes("Across 8 weeks") && body.includes("Correlation doesn't show"));
+  assert.equal(await a.locator("figure svg").count(), 2, "two small-multiple charts, no dual axis");
+  await a.screenshot({ path: path.join(tmp, "attribution.png"), fullPage: true });
+  step("attribution: Dates.csv import, two aligned charts, honest correlation statement");
+
+  await a.goto(`${BASE}/dashboard/presence/${domain.id}`);
+  body = await text(a);
+  assert.ok(/high\s*G2/.test(body) && body.includes("techradar.com"));
+  step("presence: G2 ranked high from AI citations, techradar listed as a publication");
+
+  await a.goto(`${BASE}/dashboard/crawls/${crawlId}`);
+  assert.ok((await text(a)).includes("AI extractability check (beta)"));
+  assert.equal(await a.locator("button:has-text('Run AI extractability check')").isDisabled(), true);
+  assert.equal(await db.judgeRun.count(), 0);
+  step("extractability judge stays disabled without an API key and nothing runs");
+
   console.log("Phone width");
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, storageState: await ctxA.storageState() });
   const m = await phone.newPage();
   const overflowing: string[] = [];
-  for (const path of ["/dashboard", "/dashboard/sites", `/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, "/dashboard/visibility", `/dashboard/visibility/${domain.id}`, `/dashboard/entity/${domain.id}`, `/dashboard/fixes/${domain.id}`, "/dashboard/alerts", "/dashboard/costs", "/dashboard/billing"]) {
+  for (const path of ["/dashboard", "/dashboard/sites", `/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, "/dashboard/visibility", `/dashboard/visibility/${domain.id}`, `/dashboard/entity/${domain.id}`, `/dashboard/fixes/${domain.id}`, `/dashboard/truth/${domain.id}`, `/dashboard/attribution/${domain.id}`, `/dashboard/presence/${domain.id}`, "/dashboard/alerts", "/dashboard/costs", "/dashboard/billing"]) {
     await m.goto(`${BASE}${path}`);
     const w = await m.evaluate(() => document.documentElement.scrollWidth);
     if (w > 390) overflowing.push(`${path} (${w}px)`);
@@ -321,7 +407,7 @@ async function main() {
   const b = await ctxB.newPage();
   await signup(b, "Bob", "bob@example.com");
   await b.waitForURL(/\/dashboard/);
-  for (const path of [`/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, `/dashboard/visibility/${domain.id}`, `/dashboard/entity/${domain.id}`, `/dashboard/fixes/${domain.id}`]) {
+  for (const path of [`/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, `/dashboard/visibility/${domain.id}`, `/dashboard/entity/${domain.id}`, `/dashboard/fixes/${domain.id}`, `/dashboard/truth/${domain.id}`, `/dashboard/attribution/${domain.id}`, `/dashboard/presence/${domain.id}`]) {
     const res = await b.goto(`${BASE}${path}`);
     assert.equal(res?.status(), 404, `Bob could open Alice's ${path}`);
   }
@@ -366,5 +452,7 @@ function cleanup(code: number) {
     execSync("pkill -f next-server || true; pkill -f 'src/worker/index.ts' || true", { stdio: "ignore", shell: "/bin/bash" });
   } catch {}
   fs.rmSync("ui-test.db", { force: true });
+  fs.rmSync(".ui-test-tmp/Queries.csv", { force: true });
+  fs.rmSync(".ui-test-tmp/Dates.csv", { force: true });
   process.exit(code);
 }

@@ -16,7 +16,7 @@ export default async function PresencePage({ params }: { params: Promise<{ domai
   const domain = await db.domain.findFirst({ where: { id: domainId, orgId: org.id }, include: { entity: true } });
   if (!domain) notFound();
   const entity = loadEntity(domain.entity, defaultEntity(domain.hostname, domain.brandName));
-  const run = await db.visibilityRun.findFirst({ where: { domainId: domain.id, status: "completed" }, orderBy: { createdAt: "desc" }, include: { results: { select: { citedUrls: true, error: true } } } });
+  const run = await db.visibilityRun.findFirst({ where: { domainId: domain.id, status: "completed", results: { some: { error: null } } }, orderBy: { createdAt: "desc" }, include: { results: { select: { citedUrls: true, error: true } } } });
   const answers = (run?.results ?? [])
     .filter((r) => !r.error)
     .map((r) => ({

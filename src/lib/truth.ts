@@ -114,7 +114,9 @@ export function checkAnswer(answer: string, brandTerms: string[], facts: BrandFa
       if (nums.length && !nums.every((n) => sNums.includes(n))) return;
       const overlap = keyWords.filter((w) => s.toLowerCase().includes(w)).length / Math.max(1, keyWords.length);
       if (overlap < 0.5) return;
-      const nearBrand = aboutBrand(i) || (i > 0 && aboutBrand(i - 1));
+      // A previous sentence naming you only counts as attribution if this one doesn't name a competitor itself.
+      const namesRival = facts.competitors.some((c) => mentions(s, c));
+      const nearBrand = aboutBrand(i) || (i > 0 && aboutBrand(i - 1) && !namesRival);
       if (nearBrand) return;
       const rival = facts.competitors.find((c) => mentions(s, c) || (i > 0 && mentions(ss[i - 1], c)));
       const others = citedHosts.filter((h) => brandHost && h !== brandHost && !h.endsWith(`.${brandHost}`));

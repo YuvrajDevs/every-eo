@@ -288,7 +288,7 @@ export async function saveFacts(domainId: string, _: FormState, formData: FormDa
   const data = JSON.stringify(parsed.data);
   await db.factsRecord.upsert({ where: { domainId: domain.id }, update: { data }, create: { domainId: domain.id, data } });
   // Re-check the latest stored answers right away; this reads saved text only and makes no AI calls.
-  const run = await db.visibilityRun.findFirst({ where: { domainId: domain.id, status: "completed" }, orderBy: { createdAt: "desc" } });
+  const run = await db.visibilityRun.findFirst({ where: { domainId: domain.id, status: "completed", results: { some: { error: null } } }, orderBy: { createdAt: "desc" } });
   if (run) await truthCheck(run.id, { alert: false });
   revalidatePath(`/dashboard/truth/${domain.id}`);
   return undefined;

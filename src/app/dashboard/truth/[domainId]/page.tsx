@@ -22,7 +22,7 @@ export default async function TruthPage({ params }: { params: Promise<{ domainId
   const domain = await db.domain.findFirst({ where: { id: domainId, orgId: org.id }, include: { prompts: true } });
   if (!domain) notFound();
   const facts = await loadFacts(domain.id);
-  const run = await db.visibilityRun.findFirst({ where: { domainId: domain.id, status: "completed" }, orderBy: { createdAt: "desc" }, include: { truthIssues: true, results: { select: { id: true, error: true } } } });
+  const run = await db.visibilityRun.findFirst({ where: { domainId: domain.id, status: "completed", results: { some: { error: null } } }, orderBy: { createdAt: "desc" }, include: { truthIssues: true, results: { select: { id: true, error: true } } } });
   const prompts = new Map(domain.prompts.map((p) => [p.id, p.text]));
   const answered = run?.results.filter((r) => !r.error).length ?? 0;
 
