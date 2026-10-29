@@ -54,6 +54,26 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
   const overall = cell(() => true);
   const overallCi = wilson(overall.mentioned, overall.total);
   const expectedTotal = run ? domain.prompts.length * runEngines.length * run.trials : 0;
+  // Which sites AI engines link to in answers where this brand isn't linked, and how many distinct questions each appears for.
+  const root = domain.hostname.replace(/^www\./, "");
+  const rivals = new Map<string, { answers: number; prompts: Set<string> }>();
+  for (const r of run?.results ?? []) {
+    if (r.error || r.cited || !r.citedUrls) continue;
+    const hosts = new Set<string>();
+    for (const c of JSON.parse(r.citedUrls) as { url: string }[]) {
+      try {
+        const h = new URL(c.url).hostname.replace(/^www\./, "");
+        if (h !== root && !h.endsWith(`.${root}`)) hosts.add(h);
+      } catch {}
+    }
+    for (const h of hosts) {
+      const e = rivals.get(h) ?? { answers: 0, prompts: new Set<string>() };
+      e.answers++;
+      e.prompts.add(r.promptId);
+      rivals.set(h, e);
+    }
+  }
+  const topRivals = [...rivals].sort((a, b) => b[1].answers - a[1].answers).slice(0, 8);
   const firstError = run?.results.find((r) => r.error)?.error;
 
   return (
@@ -190,6 +210,23 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
               ))}
             </ul>
           </Card>
+
+          {topRivals.length > 0 && (
+            <Card>
+              <SectionTitle>Cited instead of you</SectionTitle>
+              <p className="-mt-2 mb-3 text-xs text-muted">
+                Sites AI engines linked in answers that didn&apos;t link you. These are where mentions and listings would be worth earning; many are third-party sites you can&apos;t outrank, only appear on.
+              </p>
+              <ul className="space-y-1.5">
+                {topRivals.map(([host, v]) => (
+                  <li key={host} className="flex items-center justify-between gap-3 rounded-xl bg-panel px-3 py-2 text-xs">
+                    <span className="truncate">{host}</span>
+                    <span className="shrink-0 text-muted">{v.answers} answers · {v.prompts.size} {v.prompts.size === 1 ? "question" : "questions"}</span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
 
           <Card>
             <SectionTitle>Your brand name</SectionTitle>
