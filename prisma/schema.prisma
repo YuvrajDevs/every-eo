@@ -62,6 +62,7 @@ model Domain {
   alerts         Alert[]
   entity         EntityRecord?
   wordpress      WpConnection?
+  shopify        ShopifyConnection?
   fixes          Fix[]
   crawls         Crawl[]
   prompts        Prompt[]
@@ -296,4 +297,16 @@ model StripeEvent {
   id        String   @id // Stripe event id
   type      String
   createdAt DateTime @default(now())
+}
+
+// Shopify app installation for a store. The Admin API access token is encrypted (lib/secrets.ts).
+model ShopifyConnection {
+  id             String   @id @default(cuid())
+  domainId       String   @unique
+  shop           String   @unique // xyz.myshopify.com
+  token          String   // encrypted offline access token
+  scopes         String
+  installationId String?  // AppInstallation gid, owner of the app-data metafields the theme embed reads
+  domain         Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
 }

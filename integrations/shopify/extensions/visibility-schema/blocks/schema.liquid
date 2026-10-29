@@ -1,0 +1,20 @@
+{%- comment -%}
+  App embed: prints structured data the Visibility platform saved for this store.
+  head_site appears on every page, head_home only on the homepage. Values are ready-made
+  <script type="application/ld+json"> tags with "<" escaped, written by the platform.
+{%- endcomment -%}
+{%- assign vis = app.metafields.visibility -%}
+{%- if vis.head_site.value != blank -%}
+{{ vis.head_site.value }}
+{%- endif -%}
+{%- if request.page_type == 'index' and vis.head_home.value != blank -%}
+{{ vis.head_home.value }}
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Visibility structured data",
+  "target": "head",
+  "settings": []
+}
+{% endschema %}

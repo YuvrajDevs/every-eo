@@ -1,0 +1,22 @@
+# Template for the Shopify CLI (`shopify app deploy`). Fill in client_id and the app URL for your deployment.
+client_id = "YOUR_SHOPIFY_API_KEY"
+name = "Visibility"
+application_url = "https://app.example.com"
+embedded = false
+
+[access_scopes]
+scopes = "read_themes"
+
+[auth]
+redirect_urls = ["https://app.example.com/api/shopify/callback"]
+
+[webhooks]
+api_version = "2025-01"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "https://app.example.com/api/shopify/webhooks"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "https://app.example.com/api/shopify/webhooks"

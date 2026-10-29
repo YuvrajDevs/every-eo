@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { loadFixContext } from "@/lib/fix-context";
 import { PLATFORM_LABELS, guidanceFor, type PlatformId } from "@/lib/platforms";
 import { scriptTag } from "@/lib/entity";
+import { shopifySupports } from "@/lib/fix-engine";
+import { shopifyConfigured } from "@/lib/shopify";
 import { disconnectWp, recheckFix, rollbackAppliedFix } from "@/app/actions";
 import { Card, EvidenceBadge, SectionTitle } from "@/components/ui";
 import { CopyBlock } from "@/components/copy-block";
@@ -19,15 +21,23 @@ const STATUS: Record<string, { label: string; tone: string }> = {
   rolled_back: { label: "Rolled back", tone: "bg-panel text-muted" },
 };
 
-export default async function FixesPage({ params }: { params: Promise<{ domainId: string }> }) {
-  const { domainId } = await params;
+const SHOPIFY_NOTICE: Record<string, string> = {
+  connected: "Shopify store connected.",
+  not_configured: "The Shopify app isn't configured on this server yet (SHOPIFY_API_KEY / SHOPIFY_API_SECRET).",
+  bad_shop: "Enter your store's myshopify.com address, e.g. your-store.myshopify.com.",
+};
+
+export default async function FixesPage({ params, searchParams }: { params: Promise<{ domainId: string }>; searchParams: Promise<{ shopify?: string }> }) {
+  const [{ domainId }, { shopify: shopifyNotice }] = await Promise.all([params, searchParams]);
   const { org } = await requireUser();
-  const domain = await db.domain.findFirst({ where: { id: domainId, orgId: org.id }, include: { wordpress: true, fixes: { orderBy: { createdAt: "desc" } } } });
+  const domain = await db.domain.findFirst({ where: { id: domainId, orgId: org.id }, include: { wordpress: true, shopify: true, fixes: { orderBy: { createdAt: "desc" } } } });
   if (!domain) notFound();
   const { crawl, proposals, blocked } = await loadFixContext(domain);
   const platform = (crawl?.platform ?? "unknown") as PlatformId;
-  const autoFix = platform === "wordpress" || (platform === "unknown" && Boolean(domain.wordpress));
-  const connected = Boolean(domain.wordpress);
+  const isShopify = platform === "shopify" || Boolean(domain.shopify);
+  const autoFix = isShopify || platform === "wordpress" || (platform === "unknown" && Boolean(domain.wordpress));
+  const connected = isShopify ? Boolean(domain.shopify) : Boolean(domain.wordpress);
+  const canApply = (p: (typeof proposals)[number]) => autoFix && (!isShopify || shopifySupports(p));
   const active = new Map(domain.fixes.filter((f) => f.status !== "rolled_back").map((f) => [f.key, f]));
   const open = proposals.filter((p) => !active.has(p.key) || active.get(p.key)!.status === "failed");
 
@@ -49,7 +59,42 @@ export default async function FixesPage({ params }: { params: Promise<{ domainId
         </Card>
       )}
 
-      {crawl && autoFix && (
+      {shopifyNotice && SHOPIFY_NOTICE[shopifyNotice] && (
+        <Card className={shopifyNotice === "connected" ? "bg-mint" : "bg-peach"}>
+          <p className="text-sm">{SHOPIFY_NOTICE[shopifyNotice]}</p>
+        </Card>
+      )}
+
+      {crawl && isShopify && (
+        <Card>
+          <SectionTitle>Shopify connection</SectionTitle>
+          {domain.shopify ? (
+            <div className="space-y-2 text-sm">
+              <p>
+                Connected to <strong>{domain.shopify.shop}</strong>.
+              </p>
+              <p className="text-xs text-muted">
+                Turn on the &quot;Visibility structured data&quot; app embed once: Online Store → Themes → Customize → App embeds. Fixes appear on your storefront after that.
+              </p>
+            </div>
+          ) : (
+            <form action="/api/shopify/install" method="get" className="space-y-3">
+              <input type="hidden" name="domainId" value={domain.id} />
+              <label className="block space-y-1">
+                <span className="text-xs font-semibold">Store address</span>
+                <input name="shop" placeholder="your-store.myshopify.com" required className="w-full rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm outline-none focus:border-ink" />
+              </label>
+              <button disabled={!shopifyConfigured()} className="rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-accent-ink hover:opacity-85 disabled:opacity-40">
+                Install the Shopify app
+              </button>
+              {!shopifyConfigured() && <p className="text-xs text-muted">Not available until the Shopify app credentials are configured on the server.</p>}
+            </form>
+          )}
+          <p className="mt-3 text-xs text-muted">On Shopify we can add structured data automatically. Meta descriptions and robots.txt changes are shown as steps for you to apply.</p>
+        </Card>
+      )}
+
+      {crawl && autoFix && !isShopify && (
         <Card>
           <SectionTitle>WordPress connection</SectionTitle>
           {connected ? (
@@ -110,7 +155,7 @@ export default async function FixesPage({ params }: { params: Promise<{ domainId
                   </div>
                   <p className="text-xs text-muted">{p.why}</p>
                   {failed && <p className="text-xs text-high">Last attempt failed: {failed}</p>}
-                  {autoFix ? (
+                  {canApply(p) ? (
                     <ApplyFixForm domainId={domain.id} fixKey={p.key} editableText={p.editableText ? String(p.payload.text) : undefined} disabled={!connected} />
                   ) : (
                     <>
