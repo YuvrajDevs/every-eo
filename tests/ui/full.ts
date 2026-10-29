@@ -14,6 +14,7 @@ const env = {
   ...process.env,
   DATABASE_URL: DB,
   SESSION_SECRET: "ui-test-secret-ui-test-secret-1234",
+  STAFF_EMAILS: "staff@example.com",
   OPENAI_API_KEY: "bogus-key-for-failure-path",
   PSI_API_KEY: "",
 };
@@ -390,11 +391,122 @@ async function main() {
   assert.equal(await db.judgeRun.count(), 0);
   step("extractability judge stays disabled without an API key and nothing runs");
 
+  console.log("Phase 4: agency, white-label, API, staff, rate limits");
+  const ctxG = await browser.newContext();
+  const g = await ctxG.newPage();
+  g.on("pageerror", (e) => pageErrors.push(e.message));
+  await g.goto(`${BASE}/signup`);
+  await g.fill("input[name=name]", "Gina");
+  await g.fill("input[name=company]", "Northwind Agency");
+  await g.fill("input[name=email]", "gina@northwind.example");
+  await g.fill("input[name=password]", "password1234");
+  await g.check("input[name=agency]");
+  await g.click("form button");
+  await g.waitForURL(/\/dashboard/);
+  await g.goto(`${BASE}/dashboard/clients`);
+  for (const name of ["Acme Bakery", "Bolt Bikes"]) {
+    await g.fill("input[name=name]", name);
+    await g.click("button:has-text('Add client')");
+    await g.waitForSelector(`td:has-text('${name}')`);
+  }
+  await g.fill("input[name=name]", "Third Client");
+  await g.click("button:has-text('Add client')");
+  await g.waitForSelector("text=includes 2 client workspaces");
+  step("agency sign-up, two client workspaces, trial limit blocks a third");
+
+  await g.goto(`${BASE}/dashboard/branding`);
+  await g.fill("input[name=brandName]", "Northwind SEO");
+  await g.fill("input[name=brandColor]", "javascript:red");
+  await g.click("button:has-text('Save branding')");
+  await g.waitForSelector("text=Colour must look like");
+  assert.equal(await g.inputValue("input[name=brandName]"), "Northwind SEO", "typed values survive a failed save");
+  assert.equal(await g.inputValue("input[name=brandColor]"), "javascript:red");
+  await g.fill("input[name=brandColor]", "#1f3a93");
+  await g.fill("textarea[name=reportFooter]", "Prepared by Northwind SEO");
+  await g.click("button:has-text('Save branding')");
+  await waitFor(async () => (await db.organization.findFirst({ where: { name: "Northwind Agency" } }))?.brandName === "Northwind SEO", "brand saved", 10_000);
+  step("branding validates colours, keeps what was typed on error, and saves");
+
+  await g.goto(`${BASE}/dashboard/clients`);
+  await g.click("tr:has-text('Acme Bakery') button:has-text('Open')");
+  await g.waitForSelector("text=Client workspace: Acme Bakery");
+  body = await text(g);
+  assert.ok(body.includes("Northwind SEO"), "client workspace shows the agency brand");
+  assert.ok(!body.includes("Visibility\n"), "product name replaced in the sidebar");
+  const highlight = await g.evaluate(() => getComputedStyle(document.querySelector("div.min-h-screen")!).getPropertyValue("--highlight").trim());
+  assert.equal(highlight, "#1f3a93");
+  step("client workspace: agency banner, agency brand and accent colour");
+  await g.click("button:has-text('Back to all clients')");
+  await g.waitForSelector("text=Add a client");
+  step("back to the agency from a client workspace");
+
+  // Alice (standard org) must not be able to switch into Northwind's client.
+  const acme = await db.organization.findFirstOrThrow({ where: { name: "Acme Bakery" } });
+  assert.equal((await a.goto(`${BASE}/dashboard/clients`))?.status(), 404, "a standard workspace has no client console");
+  const { resolveAccess } = await import("@/lib/access");
+  const aliceUser = await db.user.findFirstOrThrow({ where: { email: "alice@example.com" } });
+  assert.equal(await resolveAccess(aliceUser.id, acme.id), null);
+  step("other customers have no access to an agency's client workspaces");
+
+  await g.goto(`${BASE}/dashboard/api`);
+  assert.ok((await text(g)).includes("API access is included in the Advanced and Agency plans"));
+  assert.equal(await g.locator("button:has-text('Create key')").isDisabled(), true);
+  await db.organization.updateMany({ where: { name: "Northwind Agency" }, data: { plan: "agency" } });
+  await g.goto(`${BASE}/dashboard/api`);
+  await g.fill("input[name=name]", "Looker");
+  await g.click("button:has-text('Create key')");
+  await g.waitForSelector("text=Copy it now");
+  const key = (await g.locator("pre code").first().textContent())!.trim();
+  assert.match(key, /^vis_/);
+  const apiRes = await fetch(`${BASE}/api/v1/clients`, { headers: { authorization: `Bearer ${key}` } });
+  assert.equal(apiRes.status, 200);
+  assert.deepEqual(((await apiRes.json()) as { data: { name: string }[] }).data.map((c) => c.name), ["Acme Bakery", "Bolt Bikes"]);
+  const viaClient = await fetch(`${BASE}/api/v1/sites`, { headers: { authorization: `Bearer ${key}`, "x-workspace": acme.id } });
+  assert.equal(viaClient.status, 200);
+  const crossOrg = await fetch(`${BASE}/api/v1/sites/${domain.id}/audit`, { headers: { authorization: `Bearer ${key}` } });
+  assert.equal(crossOrg.status, 404);
+  await g.click("button:has-text('Revoke')");
+  await waitFor(async () => (await fetch(`${BASE}/api/v1/clients`, { headers: { authorization: `Bearer ${key}` } })).status === 401, "revoked key rejected", 10_000);
+  step("API: plan-gated keys, shown once, agency client access, cross-org 404, revoke");
+
+  const staffOutsider = await g.goto(`${BASE}/staff`);
+  assert.equal(staffOutsider?.status(), 404);
+  const ctxS = await browser.newContext();
+  const st = await ctxS.newPage();
+  await st.goto(`${BASE}/signup`);
+  await st.fill("input[name=name]", "Sam Staff");
+  await st.fill("input[name=company]", "Visibility Inc");
+  await st.fill("input[name=email]", "staff@example.com");
+  await st.fill("input[name=password]", "password1234");
+  await st.click("form button");
+  await st.waitForURL(/\/dashboard/);
+  await st.goto(`${BASE}/staff`);
+  body = await text(st);
+  assert.ok(body.includes("Northwind Agency") && body.includes("Acme Bakery") && body.includes("Alice Co"));
+  await st.click("a:has-text('Northwind Agency')");
+  await st.fill("textarea[name=body]", "Onboarding call booked for Tuesday.");
+  await st.click("button:has-text('Add note')");
+  await st.waitForSelector("text=Onboarding call booked for Tuesday.");
+  step("staff console: 404 for customers, full overview and notes for staff");
+  await ctxS.close();
+
+  const lp = await ctxG.newPage();
+  for (let i = 0; i < 11; i++) {
+    await lp.goto(`${BASE}/login`);
+    await lp.fill("input[name=email]", "victim@example.com");
+    await lp.fill("input[name=password]", `wrong-guess-${i}`);
+    await lp.click("form button");
+    await lp.waitForSelector("p[role=alert], text=Email or password is incorrect, text=Too many login attempts").catch(() => {});
+  }
+  await lp.waitForSelector("text=Too many login attempts");
+  step("login rate limit kicks in after 10 attempts for one account");
+  await ctxG.close();
+
   console.log("Phone width");
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, storageState: await ctxA.storageState() });
   const m = await phone.newPage();
   const overflowing: string[] = [];
-  for (const path of ["/dashboard", "/dashboard/sites", `/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, "/dashboard/visibility", `/dashboard/visibility/${domain.id}`, `/dashboard/entity/${domain.id}`, `/dashboard/fixes/${domain.id}`, `/dashboard/truth/${domain.id}`, `/dashboard/attribution/${domain.id}`, `/dashboard/presence/${domain.id}`, "/dashboard/alerts", "/dashboard/costs", "/dashboard/billing"]) {
+  for (const path of ["/dashboard", "/dashboard/sites", `/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, "/dashboard/visibility", `/dashboard/visibility/${domain.id}`, `/dashboard/entity/${domain.id}`, `/dashboard/fixes/${domain.id}`, `/dashboard/truth/${domain.id}`, `/dashboard/attribution/${domain.id}`, `/dashboard/presence/${domain.id}`, "/dashboard/alerts", "/dashboard/costs", "/dashboard/billing", "/dashboard/api"]) {
     await m.goto(`${BASE}${path}`);
     const w = await m.evaluate(() => document.documentElement.scrollWidth);
     if (w > 390) overflowing.push(`${path} (${w}px)`);
@@ -420,7 +532,7 @@ async function main() {
   await b.goto(`${BASE}/dashboard/alerts`);
   assert.ok((await text(b)).includes("No alerts yet"));
   step("sites and costs lists contain no other organisation's data");
-  assert.ok((await db.membership.count()) === 2);
+  assert.equal(await db.membership.count({ where: { user: { email: "bob@example.com" } } }), 1, "Bob belongs only to his own workspace");
 
   // Tampered cookie is rejected.
   const cookies = await ctxB.cookies();

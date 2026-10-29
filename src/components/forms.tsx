@@ -28,13 +28,13 @@ export function SignupForm() {
   return (
     <form action={action} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Your name" name="name" autoComplete="name" required />
-        <Field label="Company or agency" name="company" autoComplete="organization" required />
+        <Field label="Your name" name="name" autoComplete="name" required defaultValue={state?.values?.name} />
+        <Field label="Company or agency" name="company" autoComplete="organization" required defaultValue={state?.values?.company} />
       </div>
-      <Field label="Work email" name="email" type="email" autoComplete="email" required />
+      <Field label="Work email" name="email" type="email" autoComplete="email" required defaultValue={state?.values?.email} />
       <Field label="Password" name="password" type="password" placeholder="At least 10 characters" autoComplete="new-password" required minLength={10} />
       <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" name="agency" value="yes" className="mt-1" />
+        <input type="checkbox" name="agency" value="yes" className="mt-1" defaultChecked={state?.values?.agency === "yes"} />
         <span>
           I&apos;m an agency managing several clients
           <span className="block text-xs text-muted">You get a client console and can brand reports as your own.</span>
@@ -56,7 +56,7 @@ export function LoginForm() {
   const [state, action, pending] = useActionState(login, undefined);
   return (
     <form action={action} className="space-y-4">
-      <Field label="Email" name="email" type="email" autoComplete="email" required />
+      <Field label="Email" name="email" type="email" autoComplete="email" required defaultValue={state?.values?.email} />
       <Field label="Password" name="password" type="password" autoComplete="current-password" required />
       <ErrorText state={state} />
       <button disabled={pending} className={`${buttonClass} w-full`}>

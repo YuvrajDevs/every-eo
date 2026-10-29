@@ -17,16 +17,17 @@ function Area({ label, hint, ...props }: React.TextareaHTMLAttributes<HTMLTextAr
 
 export function FactsForm({ domainId, values }: { domainId: string; values: Record<string, string> }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveFacts.bind(null, domainId), undefined);
+  const v = { ...values, ...state?.values };
   return (
     <form action={action} className="space-y-4">
-      <Area label="Current prices" name="prices" defaultValue={values.prices} placeholder={"Starter | 29 | USD\nPro | 79 | USD"} hint="One per line: name | amount | currency. Any other price an AI gives for you gets flagged." />
+      <Area label="Current prices" name="prices" defaultValue={v.prices} placeholder={"Starter | 29 | USD\nPro | 79 | USD"} hint="One per line: name | amount | currency. Any other price an AI gives for you gets flagged." />
       <label className="block space-y-1">
         <span className="text-xs font-semibold">Year founded</span>
-        <input name="foundedYear" defaultValue={values.foundedYear} inputMode="numeric" placeholder="2019" className="w-40 rounded-full border border-line bg-panel px-4 py-2.5 text-sm outline-none focus:border-ink" />
+        <input name="foundedYear" defaultValue={v.foundedYear} inputMode="numeric" placeholder="2019" className="w-40 rounded-full border border-line bg-panel px-4 py-2.5 text-sm outline-none focus:border-ink" />
       </label>
-      <Area label="Discontinued products or plans" name="discontinued" defaultValue={values.discontinued} placeholder="Basic plan" hint="One per line. Flagged when an answer mentions them without saying they're discontinued." />
-      <Area label="Your distinctive claims and statistics" name="claims" defaultValue={values.claims} placeholder="We scan over 2 million letters a year" hint="One per line. Flagged when an answer repeats them without your name, or credits a competitor." />
-      <Area label="Competitors" name="competitors" defaultValue={values.competitors} placeholder="Rival Mail" hint="One per line. Helps tell when your claims are credited to someone else." />
+      <Area label="Discontinued products or plans" name="discontinued" defaultValue={v.discontinued} placeholder="Basic plan" hint="One per line. Flagged when an answer mentions them without saying they're discontinued." />
+      <Area label="Your distinctive claims and statistics" name="claims" defaultValue={v.claims} placeholder="We scan over 2 million letters a year" hint="One per line. Flagged when an answer repeats them without your name, or credits a competitor." />
+      <Area label="Competitors" name="competitors" defaultValue={v.competitors} placeholder="Rival Mail" hint="One per line. Helps tell when your claims are credited to someone else." />
       <button disabled={pending} className="rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-accent-ink hover:opacity-85 disabled:opacity-50">
         {pending ? "Saving…" : "Save and re-check answers"}
       </button>

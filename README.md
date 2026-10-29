@@ -1,4 +1,4 @@
-# Visibility platform (Phases 0–3)
+# Visibility platform (Phases 0–4)
 
 Web app + background worker that audits a website for search engines and AI assistants.
 
@@ -62,8 +62,23 @@ The WordPress tests boot a real WordPress (PHP's built-in server + SQLite, no My
 
 All outbound fetches go through `src/lib/safe-fetch.ts`, which blocks internal/private network addresses on every redirect hop so users can't point the crawler at internal systems.
 
+## Phase 4 features
+
+- **Agency workspaces** (`src/lib/access.ts`, `/dashboard/clients`): sign up as an agency, add client workspaces, switch into them. Agency staff can act in their own clients only; client members can't reach the agency or sibling clients.
+- **White-label** (`src/lib/branding.ts`, `/dashboard/branding`): agency name, logo, accent colour (with readable text picked automatically) and report footer. Client workspaces inherit them.
+- **Reseller billing** (`src/lib/plans.ts`, `src/lib/stripe.ts`): the Agency plan is billed per client workspace (Stripe quantity, kept in sync), and each client gets its own allowance. Set `STRIPE_PRICE_AGENCY_CLIENT`.
+- **Public API** (`src/lib/api.ts`, `/api/v1/*`, `/dashboard/api`): read-only sites, audit and visibility endpoints. Keys are stored hashed and shown once, limited to 120 requests per minute per key. Agency keys read a client with `X-Workspace`. Included in the Advanced and Agency plans.
+- **Markets** (`src/lib/markets.ts`): each question can target a market; the country goes to each engine's location setting (Claude, ChatGPT, Perplexity; Gemini has none). Per-market rates appear on the visibility page. The audit checks hreflang (validity, return links, self-reference, x-default).
+- **Account-success console** (`/staff`): every workspace's plan, usage, API cost this month, failed jobs, unread alerts, attention flags and internal notes. Only emails in `STAFF_EMAILS` can see it; everyone else gets a 404.
+- **Hardening**:
+  - Outbound connections are validated at connect time (DNS-rebinding safe).
+  - Login is rate-limited per account (10 per 15 min) and per network (30 per 15 min); sign-up per network (5 per hour).
+  - The worker runs `WORKER_CONCURRENCY` jobs in parallel, and several workers can share the queue safely.
+  - `npm run load-test -- <audits> <concurrency> <workers>` runs audits of the local fixture site and checks every one completes exactly once.
+
 ## Before production
 
-- Switch the Prisma datasource to Postgres.
-- Pin outbound connections to the resolved IP to close the DNS-rebinding gap in the address check.
-- Add rate limiting on login and sign-up.
+- Switch the Prisma datasource to Postgres. SQLite is the throughput ceiling in the load test, and the queue and rate limits assume one database and one web process.
+- Move the in-memory rate limits to a shared store (e.g. Redis) when running more than one web server.
+- Configure your proxy to overwrite `X-Forwarded-For`; the login rate limit trusts its first entry.
+- The browser render check (Chromium) resolves DNS itself, so its address check happens per request, not per connection. Run it in an isolated network if that matters.

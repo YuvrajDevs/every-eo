@@ -100,18 +100,31 @@ async function processJob(job: NonNullable<Awaited<ReturnType<typeof claimNextJo
   }
 }
 
+// Jobs run in parallel up to WORKER_CONCURRENCY; claiming is atomic, so several workers can also run side by side.
+const CONCURRENCY = Math.max(1, Number(process.env.WORKER_CONCURRENCY) || 2);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function main() {
-  console.log("[worker] started, polling for jobs");
+  console.log(`[worker] started, polling for jobs (concurrency ${CONCURRENCY})`);
   let running = true;
   process.on("SIGINT", () => (running = false));
   process.on("SIGTERM", () => (running = false));
+  const active = new Set<Promise<void>>();
   while (running) {
     await requeueStaleJobs();
     await runDueSchedules().catch((err) => console.error("[worker] scheduler:", err));
-    const job = await claimNextJob();
-    if (job) await processJob(job);
-    else await new Promise((r) => setTimeout(r, POLL_MS));
+    let claimed = false;
+    while (active.size < CONCURRENCY) {
+      const job = await claimNextJob();
+      if (!job) break;
+      claimed = true;
+      const p: Promise<void> = processJob(job).finally(() => active.delete(p));
+      active.add(p);
+    }
+    // Wake when a slot frees up or after the poll interval, whichever is first.
+    if (!claimed || active.size >= CONCURRENCY) await Promise.race([sleep(POLL_MS), ...active]);
   }
+  await Promise.all(active); // finish in-flight jobs before exiting
   await db.$disconnect();
 }
 

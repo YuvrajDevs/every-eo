@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { createClientWorkspace, resolveAccess } from "@/lib/access";
 import { brandingSchema } from "@/lib/branding";
 import { createApiKey } from "@/lib/api";
+import { rateLimit } from "@/lib/rate-limit";
 import { isStaff } from "@/lib/staff";
 import { createSession, destroySession } from "@/lib/session";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
@@ -29,7 +30,15 @@ import { createCheckout, createPortal, syncAgencySeats } from "@/lib/stripe";
 import { applyFix, connectWordPress, rollbackFix, verifyFix } from "@/lib/fix-engine";
 import { normalizeHostname, UnsafeUrlError } from "@/lib/url-safety";
 
-export type FormState = { error?: string } | undefined;
+// values: what the user submitted, sent back with an error so the form can show it again (React resets forms after
+// every submission). Secrets are never echoed.
+export type FormState = { error?: string; values?: Record<string, string> } | undefined;
+
+const SECRET_FIELDS = new Set(["password", "appPassword"]);
+
+function keep(formData: FormData) {
+  return Object.fromEntries([...formData.entries()].filter(([k, v]) => typeof v === "string" && !SECRET_FIELDS.has(k) && !k.startsWith("$")) as [string, string][]);
+}
 
 const signupSchema = z.object({
   agency: z.literal("yes").optional(),
@@ -39,13 +48,24 @@ const signupSchema = z.object({
   password: z.string().min(10, "Use at least 10 characters").max(200),
 });
 
+// Client IP for rate limiting. Behind a proxy, only the left-most X-Forwarded-For entry set by your own proxy is
+// trustworthy; configure the proxy to overwrite (not append to) the header.
+async function clientIp() {
+  const h = await headers();
+  return h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || "unknown";
+}
+
+const minutes = (ms: number) => Math.max(1, Math.ceil(ms / 60_000));
+
 export async function signup(_: FormState, formData: FormData): Promise<FormState> {
+  const limit = rateLimit(`signup:${await clientIp()}`, 5, 60 * 60_000);
+  if (!limit.ok) return { error: `Too many sign-ups from your network. Try again in ${minutes(limit.resetMs)} minutes.`, values: keep(formData) };
   const parsed = signupSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return { error: parsed.error.issues[0].message, values: keep(formData) };
   const { name, company, email, password, agency } = parsed.data;
 
   if (await db.user.findUnique({ where: { email } })) {
-    return { error: "An account with this email already exists. Log in instead." };
+    return { error: "An account with this email already exists. Log in instead.", values: keep(formData) };
   }
   const passwordHash = await bcrypt.hash(password, 12);
   const { user, org } = await db.$transaction(async (tx) => {
@@ -65,13 +85,17 @@ const loginSchema = z.object({
 
 export async function login(_: FormState, formData: FormData): Promise<FormState> {
   const parsed = loginSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return { error: parsed.error.issues[0].message, values: keep(formData) };
+  // Per-account and per-network limits: slows password guessing against one user and spraying across many.
+  const byEmail = rateLimit(`login:email:${parsed.data.email}`, 10, 15 * 60_000);
+  const byIp = rateLimit(`login:ip:${await clientIp()}`, 30, 15 * 60_000);
+  if (!byEmail.ok || !byIp.ok) return { error: `Too many login attempts. Try again in ${minutes(Math.max(byEmail.resetMs, byIp.resetMs))} minutes.`, values: keep(formData) };
   const user = await db.user.findUnique({
     where: { email: parsed.data.email },
     include: { memberships: { orderBy: { createdAt: "asc" }, take: 1 } },
   });
   const ok = user && (await bcrypt.compare(parsed.data.password, user.passwordHash));
-  if (!ok || user.memberships.length === 0) return { error: "Email or password is incorrect." };
+  if (!ok || user.memberships.length === 0) return { error: "Email or password is incorrect.", values: keep(formData) };
   await createSession({ userId: user.id, orgId: user.memberships[0].orgId });
   redirect("/dashboard");
 }
@@ -199,7 +223,7 @@ async function startCrawlFor(orgId: string, domainId: string) {
 export async function saveEntity(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
   const { domain } = await ownedDomain(domainId);
   const parsed = parseEntityForm(formData);
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return { error: parsed.error.issues[0].message, values: keep(formData) };
   const data = JSON.stringify(parsed.data);
   await db.entityRecord.upsert({ where: { domainId: domain.id }, update: { data }, create: { domainId: domain.id, data } });
   revalidatePath(`/dashboard/entity/${domain.id}`);
@@ -216,11 +240,11 @@ export async function connectWp(domainId: string, _: FormState, formData: FormDa
   const siteUrl = String(formData.get("siteUrl") ?? "").trim();
   const username = String(formData.get("username") ?? "").trim();
   const appPassword = String(formData.get("appPassword") ?? "").trim();
-  if (!siteUrl || !username || !appPassword) return { error: "Fill in the site address, username and application password." };
+  if (!siteUrl || !username || !appPassword) return { error: "Fill in the site address, username and application password.", values: keep(formData) };
   try {
     await connectWordPress(domain.id, { siteUrl, username, appPassword });
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: err instanceof Error ? err.message : String(err), values: keep(formData) };
   }
   revalidatePath(`/dashboard/fixes/${domain.id}`);
   return undefined;
@@ -293,7 +317,7 @@ export async function openBillingPortal() {
 export async function saveFacts(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
   const { domain } = await ownedDomain(domainId);
   const parsed = parseFactsForm(formData);
-  if (!parsed.success) return { error: parsed.error };
+  if (!parsed.success) return { error: parsed.error, values: keep(formData) };
   const data = JSON.stringify(parsed.data);
   await db.factsRecord.upsert({ where: { domainId: domain.id }, update: { data }, create: { domainId: domain.id, data } });
   // Re-check the latest stored answers right away; this reads saved text only and makes no AI calls.
@@ -387,16 +411,17 @@ export async function addClient(_: FormState, formData: FormData): Promise<FormS
 // Switching only re-issues the session after checking the user may act in the target workspace.
 export async function switchWorkspace(orgId: string) {
   const { user } = await requireUser();
-  if (!(await resolveAccess(user.id, orgId))) throw new Error("Workspace not found");
+  const target = await resolveAccess(user.id, orgId);
+  if (!target) throw new Error("Workspace not found");
   await createSession({ userId: user.id, orgId });
-  redirect("/dashboard");
+  redirect(target.org.kind === "agency" ? "/dashboard/clients" : "/dashboard");
 }
 
 export async function saveBranding(_: FormState, formData: FormData): Promise<FormState> {
   const { org } = await requireUser();
-  if (org.kind !== "agency") return { error: "Branding is available to agency workspaces." };
+  if (org.kind !== "agency") return { error: "Branding is available to agency workspaces.", values: keep(formData) };
   const parsed = brandingSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.success) return { error: parsed.error.issues[0].message, values: keep(formData) };
   await db.organization.update({ where: { id: org.id }, data: parsed.data });
   revalidatePath("/dashboard", "layout");
   return undefined;

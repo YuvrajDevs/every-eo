@@ -19,12 +19,12 @@ export function ConnectWpForm({ domainId, defaultUrl }: { domainId: string; defa
     <form action={action} className="space-y-3">
       <label className="block space-y-1">
         <span className="text-xs font-semibold">Site address</span>
-        <input name="siteUrl" defaultValue={defaultUrl} className={input} required />
+        <input name="siteUrl" defaultValue={state?.values?.siteUrl ?? defaultUrl} className={input} required />
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block space-y-1">
           <span className="text-xs font-semibold">Admin username</span>
-          <input name="username" className={input} autoComplete="off" required />
+          <input name="username" defaultValue={state?.values?.username} className={input} autoComplete="off" required />
         </label>
         <label className="block space-y-1">
           <span className="text-xs font-semibold">Application password</span>
