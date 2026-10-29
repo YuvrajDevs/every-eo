@@ -55,6 +55,7 @@ model Domain {
   nextVisibilityAt   DateTime?
   org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   alerts         Alert[]
+  entity         EntityRecord?
   crawls         Crawl[]
   prompts        Prompt[]
   visibilityRuns VisibilityRun[]
@@ -232,4 +233,13 @@ model Alert {
   createdAt DateTime     @default(now())
 
   @@index([orgId, createdAt])
+}
+
+// Brand + author details used to generate Organization/Person schema, author bios and a Wikidata draft.
+model EntityRecord {
+  id        String   @id @default(cuid())
+  domainId  String   @unique
+  data      String   // JSON EntityProfile (lib/entity.ts)
+  domain    Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
 }

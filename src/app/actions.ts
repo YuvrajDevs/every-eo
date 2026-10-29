@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { createSession, destroySession } from "@/lib/session";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
+import { parseEntityForm } from "@/lib/entity-form";
 import { normalizeHostname, UnsafeUrlError } from "@/lib/url-safety";
 
 export type FormState = { error?: string } | undefined;
@@ -168,4 +169,14 @@ async function startCrawlFor(orgId: string, domainId: string) {
   const crawlId = await startCrawl(orgId, domainId);
   revalidatePath("/dashboard");
   return crawlId;
+}
+
+export async function saveEntity(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { domain } = await ownedDomain(domainId);
+  const parsed = parseEntityForm(formData);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const data = JSON.stringify(parsed.data);
+  await db.entityRecord.upsert({ where: { domainId: domain.id }, update: { data }, create: { domainId: domain.id, data } });
+  revalidatePath(`/dashboard/entity/${domain.id}`);
+  return undefined;
 }
