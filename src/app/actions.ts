@@ -7,9 +7,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { createSession, destroySession } from "@/lib/session";
-import { enqueueJob } from "@/lib/queue";
+import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { normalizeHostname, UnsafeUrlError } from "@/lib/url-safety";
-import { configuredEngines } from "@/lib/engines";
 
 export type FormState = { error?: string } | undefined;
 
@@ -127,28 +126,46 @@ export async function setBrandName(domainId: string, _: FormState, formData: For
 
 export async function startVisibilityRun(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
   const { org, domain } = await ownedDomain(domainId);
-  const engines = configuredEngines();
-  if (engines.length === 0) return { error: "Add at least one AI engine API key first." };
-  const prompts = await db.prompt.count({ where: { domainId: domain.id } });
-  if (prompts === 0) return { error: "Add at least one question to track." };
   const trials = [3, 5, 10].includes(Number(formData.get("trials"))) ? Number(formData.get("trials")) : 3;
-  const active = await db.visibilityRun.findFirst({ where: { domainId: domain.id, status: { in: ["queued", "running"] } } });
-  if (active) return { error: "A check is already running for this site." };
-  const run = await db.visibilityRun.create({
-    data: { orgId: org.id, domainId: domain.id, trials, engines: engines.map((e) => e.id).join(",") },
-  });
-  await enqueueJob(org.id, "visibility", { runId: run.id });
+  const result = await startVisibility(org.id, domain.id, trials);
+  if ("error" in result) return { error: result.error };
   revalidatePath(`/dashboard/visibility/${domain.id}`);
   return undefined;
 }
 
-async function startCrawlFor(orgId: string, domainId: string) {
-  const active = await db.crawl.findFirst({
-    where: { orgId, domainId, status: { in: ["queued", "running"] } },
+export async function setSchedules(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { domain } = await ownedDomain(domainId);
+  const pick = (key: string) => {
+    const v = String(formData.get(key) ?? "off");
+    return (SCHEDULES as readonly string[]).includes(v) ? v : "off";
+  };
+  const auditSchedule = pick("auditSchedule");
+  const visibilitySchedule = pick("visibilitySchedule");
+  const trials = Number(formData.get("visibilityTrials"));
+  const now = new Date();
+  await db.domain.update({
+    where: { id: domain.id },
+    data: {
+      auditSchedule,
+      visibilitySchedule,
+      visibilityTrials: [3, 5, 10].includes(trials) ? trials : domain.visibilityTrials,
+      // Keep an existing due date when the cadence didn't change, so saving the form doesn't postpone checks.
+      nextAuditAt: auditSchedule === domain.auditSchedule && domain.nextAuditAt ? domain.nextAuditAt : nextRun(auditSchedule, now),
+      nextVisibilityAt: visibilitySchedule === domain.visibilitySchedule && domain.nextVisibilityAt ? domain.nextVisibilityAt : nextRun(visibilitySchedule, now),
+    },
   });
-  if (active) return active.id;
-  const crawl = await db.crawl.create({ data: { orgId, domainId } });
-  await enqueueJob(orgId, "crawl", { crawlId: crawl.id });
+  revalidatePath(`/dashboard/visibility/${domain.id}`);
+  return undefined;
+}
+
+export async function markAlertsRead() {
+  const { org } = await requireUser();
+  await db.alert.updateMany({ where: { orgId: org.id, readAt: null }, data: { readAt: new Date() } });
+  revalidatePath("/dashboard/alerts");
+}
+
+async function startCrawlFor(orgId: string, domainId: string) {
+  const crawlId = await startCrawl(orgId, domainId);
   revalidatePath("/dashboard");
-  return crawl.id;
+  return crawlId;
 }

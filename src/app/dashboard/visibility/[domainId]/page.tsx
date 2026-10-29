@@ -7,7 +7,7 @@ import { ENGINES, engineModel } from "@/lib/engines";
 import { wilson, pct } from "@/lib/stats";
 import { deletePrompt } from "@/app/actions";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { AddPromptForm, BrandNameForm, RunCheckForm } from "@/components/visibility-forms";
+import { AddPromptForm, BrandNameForm, RunCheckForm, ScheduleForm } from "@/components/visibility-forms";
 import { Card, SectionTitle, StatusPill, TONES, type Tone } from "@/components/ui";
 
 const ENGINE_TONES: Record<string, Tone> = { chatgpt: "mint", claude: "peach", gemini: "sky", perplexity: "lavender" };
@@ -227,6 +227,18 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
               </ul>
             </Card>
           )}
+
+          <Card>
+            <SectionTitle>Automatic checks</SectionTitle>
+            <ScheduleForm
+              domainId={domain.id}
+              auditSchedule={domain.auditSchedule}
+              visibilitySchedule={domain.visibilitySchedule}
+              visibilityTrials={domain.visibilityTrials}
+              nextAuditAt={domain.auditSchedule !== "off" && domain.nextAuditAt ? domain.nextAuditAt.toLocaleDateString() : null}
+              nextVisibilityAt={domain.visibilitySchedule !== "off" && domain.nextVisibilityAt ? domain.nextVisibilityAt.toLocaleDateString() : null}
+            />
+          </Card>
 
           <Card>
             <SectionTitle>Your brand name</SectionTitle>

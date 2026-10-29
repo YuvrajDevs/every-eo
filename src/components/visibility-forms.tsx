@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { Play, Plus } from "lucide-react";
-import { addPrompt, setBrandName, startVisibilityRun, type FormState } from "@/app/actions";
+import { addPrompt, setBrandName, setSchedules, startVisibilityRun, type FormState } from "@/app/actions";
 
 function ErrorText({ state }: { state: FormState }) {
   return state?.error ? (
@@ -78,6 +78,59 @@ export function RunCheckForm({
       <p className="mt-2 px-2 text-xs text-muted">
         {promptCount} {promptCount === 1 ? "question" : "questions"} × {engineCount} {engineCount === 1 ? "engine" : "engines"} × the number of times you pick. More repeats give a tighter range.
       </p>
+      <ErrorText state={state} />
+    </form>
+  );
+}
+
+export function ScheduleForm({
+  domainId,
+  auditSchedule,
+  visibilitySchedule,
+  visibilityTrials,
+  nextAuditAt,
+  nextVisibilityAt,
+}: {
+  domainId: string;
+  auditSchedule: string;
+  visibilitySchedule: string;
+  visibilityTrials: number;
+  nextAuditAt: string | null;
+  nextVisibilityAt: string | null;
+}) {
+  const [state, action, pending] = useActionState(setSchedules.bind(null, domainId), undefined);
+  const select = "rounded-full border border-line bg-panel px-3 py-2 text-sm outline-none";
+  const options = (
+    <>
+      <option value="off">Off</option>
+      <option value="weekly">Weekly</option>
+      <option value="monthly">Monthly</option>
+    </>
+  );
+  return (
+    <form action={action} className="space-y-3 text-sm">
+      <label className="flex items-center justify-between gap-3">
+        <span>Site audit</span>
+        <select name="auditSchedule" defaultValue={auditSchedule} className={select} aria-label="Site audit schedule">{options}</select>
+      </label>
+      {nextAuditAt && <p className="-mt-2 text-[11px] text-muted">Next: {nextAuditAt}</p>}
+      <label className="flex items-center justify-between gap-3">
+        <span>AI answer check</span>
+        <select name="visibilitySchedule" defaultValue={visibilitySchedule} className={select} aria-label="AI answer check schedule">{options}</select>
+      </label>
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-muted">Repeats per question</span>
+        <select name="visibilityTrials" defaultValue={String(visibilityTrials)} className={select} aria-label="Repeats per question">
+          <option value="3">3</option>
+          <option value="5">5</option>
+          <option value="10">10</option>
+        </select>
+      </label>
+      {nextVisibilityAt && <p className="-mt-2 text-[11px] text-muted">Next: {nextVisibilityAt}</p>}
+      <p className="text-[11px] text-muted">Scheduled AI checks use your API keys and cost money each time; see Costs for the per-run estimate.</p>
+      <button disabled={pending} className="rounded-full border border-line px-4 py-2 text-sm hover:border-ink disabled:opacity-50">
+        {pending ? "Saving…" : "Save schedule"}
+      </button>
       <ErrorText state={state} />
     </form>
   );

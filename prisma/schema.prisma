@@ -27,6 +27,7 @@ model Organization {
   crawls      Crawl[]
   jobs        Job[]
   apiCalls    ApiCallLog[]
+  alerts      Alert[]
 }
 
 model Membership {
@@ -46,7 +47,14 @@ model Domain {
   orgId          String
   hostname       String
   brandName      String?
+  // Automatic re-checks: off | weekly | monthly. Visibility checks cost money, so they are opt-in.
+  auditSchedule      String    @default("off")
+  visibilitySchedule String    @default("off")
+  visibilityTrials   Int       @default(5)
+  nextAuditAt        DateTime?
+  nextVisibilityAt   DateTime?
   org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  alerts         Alert[]
   crawls         Crawl[]
   prompts        Prompt[]
   visibilityRuns VisibilityRun[]
@@ -204,6 +212,23 @@ model ApiCallLog {
   units     Int          @default(1)
   costMicros Int         @default(0) // USD * 1,000,000
   org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+// Something changed for the worse between two checks of the same site.
+model Alert {
+  id        String       @id @default(cuid())
+  orgId     String
+  domainId  String
+  kind      String       // visibility_drop | new_issue | bot_blocked
+  title     String
+  detail    String
+  link      String?
+  readAt    DateTime?
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  domain    Domain       @relation(fields: [domainId], references: [id], onDelete: Cascade)
   createdAt DateTime     @default(now())
 
   @@index([orgId, createdAt])

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings, Wrench } from "lucide-react";
+import { BarChart3, Bell, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings, Wrench } from "lucide-react";
 import { logout } from "@/app/actions";
 import { APP_NAME } from "@/lib/brand";
 
@@ -10,6 +10,7 @@ const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid, match: (p: string) => p === "/dashboard" },
   { href: "/dashboard/sites", label: "Websites", icon: Globe, match: (p: string) => p.startsWith("/dashboard/sites") || p.startsWith("/dashboard/crawls") },
   { href: "/dashboard/visibility", label: "AI visibility", icon: Radar, match: (p: string) => p.startsWith("/dashboard/visibility") },
+  { href: "/dashboard/alerts", label: "Alerts", icon: Bell, match: (p: string) => p.startsWith("/dashboard/alerts") },
   { href: "/dashboard/costs", label: "Costs", icon: Receipt, match: (p: string) => p.startsWith("/dashboard/costs") },
 ];
 
@@ -30,7 +31,7 @@ export function Logo() {
   );
 }
 
-export function Sidebar({ userName, orgName }: { userName: string; orgName: string }) {
+export function Sidebar({ userName, orgName, unreadAlerts = 0 }: { userName: string; orgName: string; unreadAlerts?: number }) {
   const pathname = usePathname();
   const initials = userName
     .split(" ")
@@ -62,6 +63,9 @@ export function Sidebar({ userName, orgName }: { userName: string; orgName: stri
                 {active && <span className="absolute -left-5 h-6 w-1 rounded-r-full bg-ink" />}
                 <Icon className="size-[18px]" strokeWidth={1.75} />
                 {label}
+                {href === "/dashboard/alerts" && unreadAlerts > 0 && (
+                  <span className="ml-auto rounded-full bg-high px-2 py-0.5 text-[10px] font-semibold text-white">{unreadAlerts}</span>
+                )}
               </Link>
             );
           })}
@@ -100,15 +104,16 @@ export function Sidebar({ userName, orgName }: { userName: string; orgName: stri
             </button>
           </form>
         </div>
-        <nav className="flex gap-2 px-4 pb-3">
+        <nav className="flex gap-2 overflow-x-auto px-4 pb-3">
           {NAV.map(({ href, label, icon: Icon, match }) => (
             <Link
               key={href}
               href={href}
-              className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs ${match(pathname) ? "bg-ink text-accent-ink" : "bg-surface text-muted"}`}
+              className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-xs ${match(pathname) ? "bg-ink text-accent-ink" : "bg-surface text-muted"}`}
             >
               <Icon className="size-4" strokeWidth={1.75} />
               {label}
+              {href === "/dashboard/alerts" && unreadAlerts > 0 && <span className="rounded-full bg-high px-1.5 text-[10px] text-white">{unreadAlerts}</span>}
             </Link>
           ))}
         </nav>

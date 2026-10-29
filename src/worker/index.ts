@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import type { JobPayloads } from "@/lib/queue";
 import { runCrawl } from "@/worker/crawl";
 import { runVisibility } from "@/worker/visibility/run";
+import { runDueSchedules } from "@/worker/scheduler";
+import { crawlAlerts, visibilityAlerts } from "@/worker/alerts";
 
 const POLL_MS = 2000;
 const MAX_ATTEMPTS = 3;
@@ -29,12 +31,27 @@ async function requeueStaleJobs() {
   });
 }
 
+// The audit or run has already succeeded by the time alerts are computed; an alert bug must not fail or retry the job.
+async function safeAlerts(fn: () => Promise<number>) {
+  try {
+    await fn();
+  } catch (err) {
+    console.error("[worker] alerts:", err);
+  }
+}
+
 async function execute(type: string, payload: unknown) {
   switch (type) {
-    case "crawl":
-      return runCrawl((payload as JobPayloads["crawl"]).crawlId);
-    case "visibility":
-      return runVisibility((payload as JobPayloads["visibility"]).runId);
+    case "crawl": {
+      const { crawlId } = payload as JobPayloads["crawl"];
+      await runCrawl(crawlId);
+      return safeAlerts(() => crawlAlerts(crawlId));
+    }
+    case "visibility": {
+      const { runId } = payload as JobPayloads["visibility"];
+      await runVisibility(runId);
+      return safeAlerts(() => visibilityAlerts(runId));
+    }
     default:
       throw new Error(`Unknown job type: ${type}`);
   }
@@ -79,6 +96,7 @@ async function main() {
   process.on("SIGTERM", () => (running = false));
   while (running) {
     await requeueStaleJobs();
+    await runDueSchedules().catch((err) => console.error("[worker] scheduler:", err));
     const job = await claimNextJob();
     if (job) await processJob(job);
     else await new Promise((r) => setTimeout(r, POLL_MS));
