@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { engineModel, type EngineInfo } from "@/lib/engines";
+import { engineModel, engineUsesWebSearch, type EngineInfo } from "@/lib/engines";
 import { marketInfo } from "@/lib/markets";
 
 export type Citation = { url: string; title: string | null };
@@ -14,6 +14,8 @@ const PRICES: Record<string, { input: number; output: number; perSearch: number 
   "claude-haiku-5-5": { input: 0.1, output: 0.5, perSearch: 0.01 },
   "gpt-5-mini": { input: 0.25, output: 2, perSearch: 0.01 },
   "gemini-2.5-flash": { input: 0.3, output: 2.5, perSearch: 0.014 },
+  "gemini-flash-latest": { input: 0.3, output: 2.5, perSearch: 0.014 },
+  "gemini-3.1-flash-lite": { input: 0.1, output: 0.4, perSearch: 0.014 },
   sonar: { input: 1, output: 1, perSearch: 0.005 },
 };
 
@@ -22,16 +24,25 @@ function estimate(model: string, input: number, output: number, searches: number
   return Math.round((input * p.input + output * p.output) + searches * p.perSearch * 1_000_000);
 }
 
+const RETRY_DELAYS_MS = [5_000, 15_000];
+
+// Retries only "temporarily overloaded" responses (502/503/504). Quota and auth errors fail straight away.
 async function postJson<T>(url: string, headers: Record<string, string>, body: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json", ...headers },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(TIMEOUT_MS),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${res.status}: ${text.slice(0, 300)}`);
-  return JSON.parse(text) as T;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+    const text = await res.text();
+    if (res.ok) return JSON.parse(text) as T;
+    if ([502, 503, 504].includes(res.status) && attempt < RETRY_DELAYS_MS.length) {
+      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+      continue;
+    }
+    throw new Error(`${res.status}: ${text.slice(0, 300)}`);
+  }
 }
 
 async function askClaude(model: string, prompt: string, country?: string): Promise<EngineAnswer> {
@@ -104,12 +115,22 @@ type GeminiResponse = {
   usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
 };
 
-async function askGemini(model: string, prompt: string): Promise<EngineAnswer> {
-  const data = await postJson<GeminiResponse>(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-    { "x-goog-api-key": process.env.GEMINI_API_KEY ?? "" },
-    { contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }] },
-  );
+async function askGemini(model: string, prompt: string, webSearch: boolean): Promise<EngineAnswer> {
+  let data: GeminiResponse;
+  try {
+    data = await postJson<GeminiResponse>(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      { "x-goog-api-key": process.env.GEMINI_API_KEY ?? "" },
+      { contents: [{ role: "user", parts: [{ text: prompt }] }], ...(webSearch && { tools: [{ google_search: {} }] }) },
+    );
+  } catch (err) {
+    if (webSearch && err instanceof Error && err.message.startsWith("429") && /quota/i.test(err.message)) {
+      throw new Error(
+        "Gemini web search isn't included in this key's quota (free keys usually have none). Enable billing on the Google project, or set GEMINI_WEB_SEARCH=\"off\" in .env to check answers without web search.",
+      );
+    }
+    throw err;
+  }
   const cand = data.candidates?.[0];
   // Gemini returns redirect links; the title holds the source domain, so keep both.
   const citations = (cand?.groundingMetadata?.groundingChunks ?? []).flatMap((c) => (c.web?.uri ? [{ url: c.web.uri, title: c.web.title ?? null }] : []));
@@ -154,7 +175,7 @@ export async function askEngine(engine: EngineInfo, prompt: string, market?: str
     case "chatgpt":
       return askChatGPT(model, prompt, country);
     case "gemini":
-      return askGemini(model, prompt);
+      return askGemini(model, prompt, engineUsesWebSearch(engine));
     case "perplexity":
       return askPerplexity(model, prompt, country);
   }

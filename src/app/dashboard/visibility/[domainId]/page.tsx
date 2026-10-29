@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, CheckCircle2, CircleDashed, Info, X } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { ENGINES, engineModel } from "@/lib/engines";
+import { ENGINES, engineModel, engineUsesWebSearch } from "@/lib/engines";
 import { wilson, pct } from "@/lib/stats";
 import { deletePrompt } from "@/app/actions";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -46,7 +46,7 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
     include: { results: { orderBy: [{ trial: "asc" }] } },
   });
   const inProgress = run?.status === "queued" || run?.status === "running";
-  const engines = ENGINES.map((e) => ({ ...e, connected: Boolean(process.env[e.envKey]), model: engineModel(e) }));
+  const engines = ENGINES.map((e) => ({ ...e, connected: Boolean(process.env[e.envKey]), model: engineModel(e), webSearch: engineUsesWebSearch(e) }));
   const connected = engines.filter((e) => e.connected);
   const runEngines = run ? run.engines.split(",") : [];
 
@@ -268,7 +268,7 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">{e.label}</p>
                     <p className="truncate text-[11px] text-muted">
-                      {e.connected ? `${e.model} with web search` : `Add ${e.envKey} to .env to connect`}
+                      {e.connected ? `${e.model} ${e.webSearch ? "with web search" : "without web search (answers from its own knowledge, no links)"}` : `Add ${e.envKey} to .env to connect`}
                     </p>
                   </div>
                 </li>
@@ -337,7 +337,7 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
                 <p>
                   The range (for example 12–77%) is where the true rate most likely sits. Few repeats give a wide range; more repeats narrow it.
                 </p>
-                <p>We use each company&apos;s official API with web search on. Answers in their consumer apps can differ.</p>
+                <p>We use each company&apos;s official API, with web search on unless an engine says otherwise. Answers in their consumer apps can differ.</p>
               </div>
             </div>
           </Card>
