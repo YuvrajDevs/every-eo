@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { Play, Plus } from "lucide-react";
-import { addPrompt, setBrandName, setSchedules, startVisibilityRun, type FormState } from "@/app/actions";
+import { addPrompt, importGscQueries, setBrandName, setCategory, setSchedules, startVisibilityRun, type FormState } from "@/app/actions";
 
 function ErrorText({ state }: { state: FormState }) {
   return state?.error ? (
@@ -130,6 +130,47 @@ export function ScheduleForm({
       <p className="text-[11px] text-muted">Scheduled AI checks use your API keys and cost money each time; see Costs for the per-run estimate.</p>
       <button disabled={pending} className="rounded-full border border-line px-4 py-2 text-sm hover:border-ink disabled:opacity-50">
         {pending ? "Saving…" : "Save schedule"}
+      </button>
+      <ErrorText state={state} />
+    </form>
+  );
+}
+
+export function TrackSuggestionForm({ domainId, text }: { domainId: string; text: string }) {
+  const [state, action, pending] = useActionState(addPrompt.bind(null, domainId), undefined);
+  return (
+    <form action={action} className="shrink-0">
+      <input type="hidden" name="text" value={text} />
+      <button disabled={pending} className="rounded-full border border-line px-3 py-1 text-[11px] hover:border-ink disabled:opacity-50" aria-label={`Track "${text}"`}>
+        {pending ? "Adding…" : "Track"}
+      </button>
+      {state?.error && <span className="ml-2 text-[11px] text-high">{state.error}</span>}
+    </form>
+  );
+}
+
+export function CategoryForm({ domainId, category }: { domainId: string; category: string | null }) {
+  const [state, action, pending] = useActionState(setCategory.bind(null, domainId), undefined);
+  return (
+    <form action={action}>
+      <div className="flex gap-2">
+        <input name="category" defaultValue={category ?? ""} placeholder="What you are, e.g. mail scanning service" aria-label="Business category" className={pillInput} />
+        <button disabled={pending} className="shrink-0 rounded-full border border-line px-4 py-2.5 text-sm hover:border-ink disabled:opacity-50">
+          {pending ? "Saving…" : "Save"}
+        </button>
+      </div>
+      <ErrorText state={state} />
+    </form>
+  );
+}
+
+export function GscImportForm({ domainId }: { domainId: string }) {
+  const [state, action, pending] = useActionState(importGscQueries.bind(null, domainId), undefined);
+  return (
+    <form action={action} className="space-y-2">
+      <input type="file" name="file" accept=".csv,text/csv" aria-label="Search Console Queries CSV" className="block w-full text-xs file:mr-3 file:rounded-full file:border file:border-line file:bg-panel file:px-3 file:py-1.5" />
+      <button disabled={pending} className="rounded-full border border-line px-4 py-2 text-xs hover:border-ink disabled:opacity-50">
+        {pending ? "Importing…" : "Import queries"}
       </button>
       <ErrorText state={state} />
     </form>

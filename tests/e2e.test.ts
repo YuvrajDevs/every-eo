@@ -79,6 +79,8 @@ test("full audit finds the planted problems and nothing false on the clean parts
   // Page data.
   const guide = done.pages.find((p) => p.url.endsWith("/blog/guide"))!;
   assert.ok(guide.answerScore! >= 30);
+  assert.deepEqual(JSON.parse(guide.headings!), ["What is remote mail?", "How much does it cost?"]);
+  assert.match(guide.excerpt!, /^word0 word1/);
   assert.ok(done.pagesCount >= 5);
 
   // Cost log written.

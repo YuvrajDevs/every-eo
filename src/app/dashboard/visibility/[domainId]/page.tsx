@@ -7,7 +7,10 @@ import { ENGINES, engineModel } from "@/lib/engines";
 import { wilson, pct } from "@/lib/stats";
 import { deletePrompt } from "@/app/actions";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { AddPromptForm, BrandNameForm, RunCheckForm, ScheduleForm } from "@/components/visibility-forms";
+import { AddPromptForm, BrandNameForm, CategoryForm, GscImportForm, RunCheckForm, ScheduleForm, TrackSuggestionForm } from "@/components/visibility-forms";
+import { suggestPrompts } from "@/lib/discovery";
+import { brandTerms } from "@/worker/visibility/run";
+import { loadFacts } from "@/worker/truth";
 import { Card, SectionTitle, StatusPill, TONES, type Tone } from "@/components/ui";
 
 const ENGINE_TONES: Record<string, Tone> = { chatgpt: "mint", claude: "peach", gemini: "sky", perplexity: "lavender" };
@@ -74,6 +77,19 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
     }
   }
   const topRivals = [...rivals].sort((a, b) => b[1].answers - a[1].answers).slice(0, 8);
+  const lastCrawl = await db.crawl.findFirst({ where: { domainId: domain.id, status: "completed" }, orderBy: { createdAt: "desc" }, include: { pages: { select: { headings: true } } } });
+  const gsc = await db.gscQuery.findMany({ where: { domainId: domain.id } });
+  const facts = await loadFacts(domain.id);
+  const suggestions = suggestPrompts({
+    headings: (lastCrawl?.pages ?? []).flatMap((p) => (p.headings ? (JSON.parse(p.headings) as string[]) : [])),
+    gsc,
+    category: domain.category,
+    competitors: facts?.competitors ?? [],
+    brandTerms: brandTerms(domain.hostname, domain.brandName),
+    brandName: domain.brandName ?? "",
+    existing: domain.prompts.map((p) => p.text),
+    limit: 12,
+  });
   const firstError = run?.results.find((r) => r.error)?.error;
 
   return (
@@ -182,6 +198,33 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
               </table>
             </div>
           )}
+
+          <div className="mt-6 space-y-3 border-t border-line pt-5">
+            <p className="text-sm font-semibold">Suggested questions</p>
+            <CategoryForm domainId={domain.id} category={domain.category} />
+            {suggestions.length === 0 ? (
+              <p className="text-xs text-muted">Add what your business is, run an audit, or import Search Console queries to get suggestions.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {suggestions.map((s) => (
+                  <li key={s.text} className="flex items-center justify-between gap-3 rounded-xl bg-panel px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm">{s.text}</p>
+                      <p className="text-[11px] text-muted">
+                        {s.source === "search" ? "Google searches" : s.source === "site" ? "Your site" : "Template"} · {s.why}
+                      </p>
+                    </div>
+                    <TrackSuggestionForm domainId={domain.id} text={s.text} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <details className="text-xs">
+              <summary className="cursor-pointer text-muted">Import Search Console queries {gsc.length ? `(${gsc.length} imported)` : ""}</summary>
+              <p className="my-2 text-muted">In Search Console: Performance → Export → Download CSV. Upload the Queries.csv file from the zip.</p>
+              <GscImportForm domainId={domain.id} />
+            </details>
+          </div>
 
           <div className="mt-6 border-t border-line pt-5">
             <RunCheckForm

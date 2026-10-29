@@ -12,6 +12,7 @@ import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
 import { loadFixContext } from "@/lib/fix-context";
 import { parseFactsForm } from "@/lib/truth-form";
+import { parseGscQueries } from "@/lib/discovery";
 import { truthCheck } from "@/worker/truth";
 import { planFor, PLANS, type PlanId } from "@/lib/plans";
 import { createCheckout, createPortal } from "@/lib/stripe";
@@ -285,5 +286,27 @@ export async function saveFacts(domainId: string, _: FormState, formData: FormDa
   const run = await db.visibilityRun.findFirst({ where: { domainId: domain.id, status: "completed" }, orderBy: { createdAt: "desc" } });
   if (run) await truthCheck(run.id, { alert: false });
   revalidatePath(`/dashboard/truth/${domain.id}`);
+  return undefined;
+}
+
+export async function setCategory(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { domain } = await ownedDomain(domainId);
+  const category = String(formData.get("category") ?? "").trim().slice(0, 80) || null;
+  await db.domain.update({ where: { id: domain.id }, data: { category } });
+  revalidatePath(`/dashboard/visibility/${domain.id}`);
+  return undefined;
+}
+
+const MAX_CSV_BYTES = 2 * 1024 * 1024;
+
+export async function importGscQueries(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { domain } = await ownedDomain(domainId);
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose the Queries.csv file from your Search Console export." };
+  if (file.size > MAX_CSV_BYTES) return { error: "That file is over 2 MB. Export a shorter date range." };
+  const { rows, error } = parseGscQueries(await file.text());
+  if (error) return { error };
+  await db.$transaction([db.gscQuery.deleteMany({ where: { domainId: domain.id } }), db.gscQuery.createMany({ data: rows.map((r) => ({ ...r, domainId: domain.id })) })]);
+  revalidatePath(`/dashboard/visibility/${domain.id}`);
   return undefined;
 }

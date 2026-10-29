@@ -52,6 +52,7 @@ model Domain {
   orgId          String
   hostname       String
   brandName      String?
+  category       String?  // what the business is, in a customer's words ("mail scanning service")
   // Automatic re-checks: off | weekly | monthly. Visibility checks cost money, so they are opt-in.
   auditSchedule      String    @default("off")
   visibilitySchedule String    @default("off")
@@ -64,6 +65,7 @@ model Domain {
   wordpress      WpConnection?
   shopify        ShopifyConnection?
   facts          FactsRecord?
+  gscQueries     GscQuery[]
   truthIssues    TruthIssue[]
   fixes          Fix[]
   crawls         Crawl[]
@@ -163,6 +165,7 @@ model Page {
   answerScore     Int?
   answerSignals   String?  // JSON AnswerSignals
   excerpt         String?  // first substantial paragraph, used to suggest meta descriptions
+  headings        String?  // JSON array of H2/H3 texts, used to suggest questions to track
   crawl           Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
   fetchedAt       DateTime @default(now())
 
@@ -340,4 +343,19 @@ model TruthIssue {
   createdAt DateTime      @default(now())
 
   @@index([runId])
+}
+
+// Search Console "Queries" rows imported from a CSV export (or the API later).
+model GscQuery {
+  id          String   @id @default(cuid())
+  domainId    String
+  query       String
+  clicks      Int
+  impressions Int
+  ctr         Float?
+  position    Float?
+  domain      Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  importedAt  DateTime @default(now())
+
+  @@index([domainId])
 }
