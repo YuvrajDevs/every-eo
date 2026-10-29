@@ -298,6 +298,9 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
             <Link href={`/dashboard/attribution/${domain.id}`} className="mt-2 block text-xs underline underline-offset-4">
               See whether AI visibility moves branded search →
             </Link>
+            <Link href={`/dashboard/presence/${domain.id}`} className="mt-2 block text-xs underline underline-offset-4">
+              Where to show up besides your site →
+            </Link>
           </Card>
 
           <Card className="bg-panel">
