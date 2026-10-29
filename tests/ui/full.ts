@@ -16,7 +16,12 @@ const env = {
   SESSION_SECRET: "ui-test-secret-ui-test-secret-1234",
   STAFF_EMAILS: "staff@example.com",
   OPENAI_API_KEY: "bogus-key-for-failure-path",
+  // Blank the rest so a developer's real keys in .env are never used (or charged) by this test.
+  ANTHROPIC_API_KEY: "",
+  GEMINI_API_KEY: "",
+  PERPLEXITY_API_KEY: "",
   PSI_API_KEY: "",
+  SMTP_URL: "",
 };
 const procs: ChildProcess[] = [];
 let passed = 0;
@@ -121,7 +126,7 @@ async function main() {
   }
   step("localhost / private IP / .local / dotless rejected");
 
-  // A real public domain: the sandbox has no internet, so the crawl must fail cleanly and retry, not hang.
+  // A real public domain. Without internet the crawl must fail cleanly and retry, not hang; with internet it completes.
   await a.fill("input[name=domain]", "https://Example.com/some/path");
   await a.click("form:has(input[name=domain]) button");
   await a.waitForURL(/\/dashboard\/crawls\//, { timeout: 15000 }).catch(async () => assert.fail(`no redirect: ${(await text(a)).slice(0, 400)}`));
@@ -130,26 +135,39 @@ async function main() {
   assert.equal((await db.domain.findFirstOrThrow({ where: { orgId: org.id, hostname: "example.com" } })).hostname, "example.com");
   step("domain normalised to example.com and audit queued");
   await waitFor(async () => {
-    const j = await db.job.findFirst({ where: { orgId: org.id, type: "crawl", error: { not: null } } });
-    return !!j && j.attempts >= 1;
-  }, "failed crawl to be retried", 30_000);
+    const j = await db.job.findFirst({ where: { orgId: org.id, type: "crawl" } });
+    return !!j && (j.status === "completed" || (j.error !== null && j.attempts >= 1));
+  }, "crawl to complete or fail and be retried", 60_000);
   const job = await db.job.findFirstOrThrow({ where: { orgId: org.id, type: "crawl" } });
-  assert.ok(["queued", "failed"].includes(job.status), `job status ${job.status}`);
-  assert.ok(job.status === "failed" || job.runAt.getTime() > Date.now() - 1000, "retry scheduled in the future");
-  step(`unreachable site: job attempt recorded (${job.status}), not stuck running`);
+  if (job.status === "completed") {
+    assert.equal((await db.crawl.findUniqueOrThrow({ where: { id: exampleCrawlId } })).status, "completed");
+    step("reachable site: audit completed through the worker");
+  } else {
+    assert.ok(["queued", "failed"].includes(job.status), `job status ${job.status}`);
+    assert.ok(job.status === "failed" || job.runAt.getTime() > Date.now() - 1000, "retry scheduled in the future");
+    step(`unreachable site: job attempt recorded (${job.status}), not stuck running`);
+  }
   await a.goto(`${BASE}/dashboard/crawls/${exampleCrawlId}`);
   assert.ok(!/Application error/.test(await text(a)));
   step("crawl page renders for in-progress/failed audit");
 
-  // Re-adding the same domain must not create a duplicate domain or a second active crawl.
+  // Re-adding the same domain must not create a duplicate domain. While an audit is still active it's reused;
+  // once it has finished (sites reachable), re-adding starts a fresh one.
+  const firstFinished = (await db.crawl.findUniqueOrThrow({ where: { id: exampleCrawlId } })).status === "completed";
   await a.goto(`${BASE}/dashboard/sites`);
   await a.fill("input[name=domain]", "example.com");
   await a.click("form:has(input[name=domain]) button");
-  await a.waitForURL(/\/dashboard\/crawls\//);
-  assert.equal(a.url().split("/").pop(), exampleCrawlId);
+  await a.waitForURL((u) => u.pathname.startsWith("/dashboard/crawls/") && (firstFinished ? !u.pathname.endsWith(exampleCrawlId) : true));
   assert.equal(await db.domain.count({ where: { orgId: org.id, hostname: "example.com" } }), 1);
-  assert.equal(await db.crawl.count({ where: { orgId: org.id } }), 1);
-  step("re-adding a site reuses the active audit");
+  if (firstFinished) {
+    assert.notEqual(a.url().split("/").pop(), exampleCrawlId);
+    assert.equal(await db.crawl.count({ where: { orgId: org.id } }), 2);
+    step("re-adding a finished site starts a fresh audit, no duplicate site");
+  } else {
+    assert.equal(a.url().split("/").pop(), exampleCrawlId);
+    assert.equal(await db.crawl.count({ where: { orgId: org.id } }), 1);
+    step("re-adding a site reuses the active audit");
+  }
 
   console.log("Audit of the fixture site (worker + browser render)");
   const domain = await db.domain.create({ data: { orgId: org.id, hostname: "localhost", brandName: "Acme" } });

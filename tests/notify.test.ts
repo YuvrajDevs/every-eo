@@ -87,7 +87,7 @@ test("scheduled report: due ones sent once with site summary and footer, to memb
   const m = sink.messages[0];
   assert.deepEqual(m.to.sort(), [staff.email.toLowerCase(), "owner@acme.example"].sort());
   const raw = decode(m.raw);
-  assert.match(raw, /acmebakery\.example: health 85\/100, 1 urgent issues, mentioned in 75% \(\d+%–\d+%\) of AI answers/);
+  assert.match(raw, /acmebakery\.example: health 85\/100, 1 urgent issue, mentioned in 75% \(\d+%–\d+%\) of AI answers/);
   assert.match(raw, /Prepared by Northwind/);
   assert.equal((await db.organization.findUniqueOrThrow({ where: { id: client.id } })).nextReportAt!.toISOString(), "2026-11-09T09:00:00.000Z");
   assert.deepEqual(parseRecipients("a@b.co, A@B.co; c@d.io\nnot-an-email"), { emails: ["a@b.co", "c@d.io", "not-an-email"], bad: ["not-an-email"] });

@@ -52,3 +52,6 @@ next-env.d.ts
 !.env.example
 .wp-test/
 .ui-test-tmp/
+
+# local dev mailbox
+/dev-mail

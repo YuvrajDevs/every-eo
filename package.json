@@ -15,7 +15,8 @@
     "test": "NODE_ENV=test tsx --test --test-concurrency=1 tests/*.test.ts",
     "test:ui": "tsx tests/ui/full.ts",
     "load-test": "tsx scripts/load-test.ts",
-    "test:attack": "tsx tests/ui/attack.ts"
+    "test:attack": "tsx tests/ui/attack.ts",
+    "mailbox": "tsx scripts/dev-mailbox.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",

@@ -20,6 +20,13 @@ const env = {
   STRIPE_WEBHOOK_SECRET: "whsec_attack",
   SHOPIFY_API_KEY: "k",
   SHOPIFY_API_SECRET: "shopify_attack",
+  // Never use (or charge) a developer's real keys from .env.
+  OPENAI_API_KEY: "",
+  ANTHROPIC_API_KEY: "",
+  GEMINI_API_KEY: "",
+  PERPLEXITY_API_KEY: "",
+  PSI_API_KEY: "",
+  SMTP_URL: "",
 };
 const procs: ChildProcess[] = [];
 let passed = 0;

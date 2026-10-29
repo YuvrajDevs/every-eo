@@ -512,11 +512,14 @@ export async function addStaffNote(orgId: string, _: FormState, formData: FormDa
   return undefined;
 }
 
-export async function resendVerification() {
+export type ResendState = { error?: string; sent?: boolean } | undefined;
+
+export async function resendVerification(): Promise<ResendState> {
   const { user } = await requireUser();
-  if (user.emailVerifiedAt) return;
-  if (!rateLimit(`verify-resend:${user.id}`, 3, 60 * 60_000).ok) throw new Error("Too many emails sent. Try again in an hour.");
+  if (user.emailVerifiedAt) return { sent: true };
+  if (!rateLimit(`verify-resend:${user.id}`, 3, 60 * 60_000).ok) return { error: "You've asked for 3 emails this hour. Try again later." };
   await sendVerificationEmail(user, await appBaseUrl());
+  return { sent: true };
 }
 
 export async function saveNotifications(_: FormState, formData: FormData): Promise<FormState> {

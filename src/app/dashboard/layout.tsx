@@ -1,7 +1,8 @@
 import { requireUser } from "@/lib/auth";
 import { Sidebar } from "@/components/sidebar";
 import { db } from "@/lib/db";
-import { resendVerification, switchWorkspace } from "@/app/actions";
+import { switchWorkspace } from "@/app/actions";
+import { VerifyBanner } from "@/components/verify-banner";
 import { brandFor } from "@/lib/branding";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -15,12 +16,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <Sidebar userName={user.name} orgName={org.name} unreadAlerts={unreadAlerts} isAgency={org.kind === "agency"} brandName={brand.name} brandLogoUrl={brand.logoUrl} />
       <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 lg:px-10 lg:py-9">
         <div className="mx-auto max-w-6xl">
-          {!user.emailVerifiedAt && (
-            <form action={resendVerification} className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-peach px-4 py-2.5 text-xs">
-              <span>Confirm your email address ({user.email}) using the link we sent you.</span>
-              <button className="rounded-full bg-surface px-3 py-1 hover:opacity-85">Send it again</button>
-            </form>
-          )}
+          {!user.emailVerifiedAt && <VerifyBanner email={user.email} />}
           {agency && (
             <form action={switchWorkspace.bind(null, agency.id)} className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-lavender px-4 py-2.5 text-xs">
               <span>

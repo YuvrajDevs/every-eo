@@ -6,6 +6,16 @@ import path from "node:path";
 import * as cheerio from "cheerio";
 import { startWordPress, type WordPress } from "./wp/harness";
 
+// PHP may live anywhere on PATH (e.g. /opt/homebrew/bin on macOS), not just /usr/bin.
+const hasPhp = (() => {
+  try {
+    execFileSync("php", ["-v"], { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
 process.env.AUDIT_TEST_ALLOW_PRIVATE = "1";
 process.env.DATABASE_URL = "file:./wp-test.db";
 process.env.SESSION_SECRET ??= "wp-test-secret-wp-test-secret-1234567";
@@ -53,7 +63,7 @@ after(async () => {
   fs.rmSync("wp-test.db", { force: true });
 });
 
-describe("WordPress connector against a real WordPress install", { skip: !fs.existsSync("/usr/bin/php") && "php not installed" }, () => {
+describe("WordPress connector against a real WordPress install", { skip: !hasPhp && "php not installed" }, () => {
   test("rejects a wrong application password with a clear message", async (t) => {
     if (!site) return t.skip("WordPress test environment unavailable");
     const { connectWordPress } = await import("@/lib/fix-engine");
@@ -257,7 +267,7 @@ describe("WordPress with Yoast SEO (filter-contract stub) and a physical robots.
   });
 });
 
-describe("robots.txt rewrite (PHP unit)", { skip: !fs.existsSync("/usr/bin/php") && "php not installed" }, () => {
+describe("robots.txt rewrite (PHP unit)", { skip: !hasPhp && "php not installed" }, () => {
   const rewrite = (input: string, agents: string[]) =>
     execFileSync("php", ["-r", `define('ABSPATH', '/'); require '${path.resolve("integrations/wordpress/visibility-connector/includes/robots.php")}'; echo vcon_robots_allow(${JSON.stringify(input).replace(/\$/g, "\\$")}, json_decode('${JSON.stringify(agents)}'));`], { encoding: "utf8" });
   test("handles wildcard blocks, comments, CRLF and case-insensitive agent names", async () => {

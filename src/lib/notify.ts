@@ -63,6 +63,8 @@ export async function deliverAlerts() {
   return sent;
 }
 
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
 // Summary of every site in a workspace: latest audit health, AI mention rate (with range), unread alerts.
 export async function buildReport(orgId: string) {
   const { org, brand } = await brandOf(orgId);
@@ -90,14 +92,17 @@ export async function buildReport(orgId: string) {
   const text = [
     `${org.name}: visibility summary`,
     "",
-    ...rows.map((r) => `${r.site}: health ${r.health ?? "—"}/100, ${r.urgent} urgent issues, mentioned in ${r.mention} of AI answers, ${r.fixes} fixes applied in the last month`),
+    ...rows.map(
+      (r) =>
+        `${r.site}: health ${r.health ?? "—"}/100, ${plural(r.urgent, "urgent issue")}, ${r.mention === "not checked" ? "AI answers not checked yet" : `mentioned in ${r.mention} of AI answers`}, ${plural(r.fixes, "fix", "fixes")} applied in the last month`,
+    ),
     "",
-    `${unread} unread alerts. Full details: ${appUrl()}/dashboard`,
+    `${plural(unread, "unread alert")}. Full details: ${appUrl()}/dashboard`,
     ...(brand.reportFooter ? ["", brand.reportFooter] : []),
   ].join("\n");
   const html = `<h2 style="font-family:sans-serif">${esc(org.name)}: visibility summary</h2><table cellpadding="6" style="border-collapse:collapse;font-family:sans-serif;font-size:14px"><tr style="text-align:left;color:#666"><th>Site</th><th>Health</th><th>Urgent</th><th>Mentioned in AI answers</th><th>Fixes (30d)</th></tr>${rows
     .map((r) => `<tr style="border-top:1px solid #ddd"><td>${esc(r.site)}</td><td>${r.health ?? "—"}</td><td>${r.urgent}</td><td>${esc(r.mention)}</td><td>${r.fixes}</td></tr>`)
-    .join("")}</table><p style="font-family:sans-serif">${unread} unread alerts · <a href="${esc(appUrl())}/dashboard">Open the dashboard</a></p>${brand.reportFooter ? `<p style="color:#666;font-size:12px">${esc(brand.reportFooter)}</p>` : ""}`;
+    .join("")}</table><p style="font-family:sans-serif">${plural(unread, "unread alert")} ·<a href="${esc(appUrl())}/dashboard">Open the dashboard</a></p>${brand.reportFooter ? `<p style="color:#666;font-size:12px">${esc(brand.reportFooter)}</p>` : ""}`;
   return { subject: `${org.name}: visibility summary`, text, html, fromName: brand.name, rows };
 }
 
