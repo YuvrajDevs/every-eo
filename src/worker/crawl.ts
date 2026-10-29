@@ -6,6 +6,7 @@ import { readSitemaps } from "@/worker/sitemap";
 import { answerScore, answerSignals, type AnswerSignals } from "@/worker/answer";
 import { checkReachability } from "@/worker/reachability";
 import { detectPlatform, guidanceFor } from "@/lib/platforms";
+import { hreflangFindings, type Alternate } from "@/worker/hreflang";
 import { hasRenderGap, renderCheck } from "@/worker/render";
 import { faqSpamFinding, flattenJsonLd, schemaFindings } from "@/worker/schema";
 import { measurePerformance, performanceFindings } from "@/worker/performance";
@@ -34,6 +35,7 @@ type PageData = {
   renderGap: boolean;
   excerpt: string | null;
   headings: string[];
+  hreflang: Alternate[];
 };
 
 function sameSite(host: string, root: string) {
@@ -89,6 +91,16 @@ function parsePage(url: string, statusCode: number, html: string, rootHost: stri
     .filter((l): l is string => Boolean(l));
   $("script, style, noscript").remove();
   const signals = answerSignals($, jsonLdTypes);
+  const hreflang = $('link[rel="alternate"][hreflang]')
+    .toArray()
+    .flatMap((el) => {
+      try {
+        return [{ lang: ($(el).attr("hreflang") ?? "").trim(), href: new URL($(el).attr("href") ?? "", url).toString() }];
+      } catch {
+        return [];
+      }
+    })
+    .slice(0, 100);
   const headings = [...new Set($("h2, h3").map((_, el) => $(el).text().replace(/\s+/g, " ").trim()).get().filter((t) => t.length >= 4 && t.length <= 160))].slice(0, 25);
   const excerpt =
     $("main p, article p, body p")
@@ -125,6 +137,7 @@ function parsePage(url: string, statusCode: number, html: string, rootHost: stri
     renderGap: statusCode < 400 && wordCount < 80 && scriptCount >= 5,
     excerpt: excerpt ? excerpt.slice(0, 600) : null,
     headings,
+    hreflang,
   };
 }
 
@@ -429,6 +442,7 @@ export async function runCrawl(crawlId: string) {
         answerSignals: JSON.stringify(page.signals),
         excerpt: page.excerpt,
         headings: page.headings.length ? JSON.stringify(page.headings) : null,
+        hreflang: page.hreflang.length ? JSON.stringify(page.hreflang) : null,
       },
     });
     findings.push(...pageFindings(page, url === homepageUrl), ...page.schemaFindings);
@@ -448,6 +462,7 @@ export async function runCrawl(crawlId: string) {
   }
 
   findings.push(...siteFindings(pages, rootHost));
+  findings.push(...hreflangFindings(pages));
   const faqSpam = faqSpamFinding(pages.map((p) => p.jsonLdTypes));
   if (faqSpam) findings.push(faqSpam);
   // Measure suspected JS-only pages in a real browser; fall back to the HTML heuristic if none is installed.

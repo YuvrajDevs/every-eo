@@ -9,6 +9,7 @@ import { deletePrompt } from "@/app/actions";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { AddPromptForm, BrandNameForm, CategoryForm, GscImportForm, RunCheckForm, ScheduleForm, TrackSuggestionForm } from "@/components/visibility-forms";
 import { suggestPrompts } from "@/lib/discovery";
+import { marketInfo } from "@/lib/markets";
 import { brandTerms } from "@/worker/visibility/run";
 import { loadFacts } from "@/worker/truth";
 import { Card, SectionTitle, StatusPill, TONES, type Tone } from "@/components/ui";
@@ -90,6 +91,10 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
     existing: domain.prompts.map((p) => p.text),
     limit: 12,
   });
+  // Per-market rates, shown once questions span more than one market.
+  const marketOf = new Map(domain.prompts.map((p) => [p.id, p.market ?? ""]));
+  const markets = [...new Set(domain.prompts.map((p) => p.market ?? ""))];
+  const byMarket = markets.length > 1 ? markets.map((m) => ({ market: m, cell: cell((r) => marketOf.get(r.promptId) === m) })) : [];
   const firstError = run?.results.find((r) => r.error)?.error;
 
   return (
@@ -145,6 +150,20 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
         </section>
       )}
 
+      {byMarket.length > 0 && overall.total > 0 && (
+        <Card>
+          <SectionTitle>By market</SectionTitle>
+          <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {byMarket.map(({ market, cell: c }) => (
+              <li key={market || "any"} className="flex items-center justify-between gap-3 rounded-2xl bg-panel px-4 py-3 text-sm">
+                <span className="truncate">{marketInfo(market)?.label ?? "Any market"}</span>
+                <RateText cell={c} />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {run && run.status !== "queued" && firstError && overall.total === 0 && (
         <Card className="bg-rose">
           <p className="font-semibold">The engines returned errors</p>
@@ -178,7 +197,10 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
                 <tbody>
                   {domain.prompts.map((p) => (
                     <tr key={p.id} className="border-t border-line align-top">
-                      <td className="px-2 py-3">{p.text}</td>
+                      <td className="px-2 py-3">
+                        {p.text}
+                        {p.market && <span className="ml-2 rounded-full bg-panel px-2 py-0.5 text-[10px] text-muted">{marketInfo(p.market)?.label ?? p.market}</span>}
+                      </td>
                       {run &&
                         ENGINES.filter((e) => runEngines.includes(e.id)).map((e) => (
                           <td key={e.id} className="whitespace-nowrap px-2 py-3">

@@ -23,6 +23,7 @@ import { checkAnswerQuota } from "@/lib/usage";
 import { enqueueJob } from "@/lib/queue";
 import { truthCheck } from "@/worker/truth";
 import { planForOrg, PLANS, type PlanId } from "@/lib/plans";
+import { marketInfo } from "@/lib/markets";
 import { createCheckout, createPortal, syncAgencySeats } from "@/lib/stripe";
 import { applyFix, connectWordPress, rollbackFix, verifyFix } from "@/lib/fix-engine";
 import { normalizeHostname, UnsafeUrlError } from "@/lib/url-safety";
@@ -125,7 +126,8 @@ export async function addPrompt(domainId: string, _: FormState, formData: FormDa
   if (text.length > 300) return { error: "Keep questions under 300 characters." };
   const count = await db.prompt.count({ where: { domainId: domain.id } });
   if (count >= MAX_PROMPTS) return { error: `You can track up to ${MAX_PROMPTS} questions per site on your plan.` };
-  await db.prompt.create({ data: { domainId: domain.id, text } });
+  const market = String(formData.get("market") ?? "");
+  await db.prompt.create({ data: { domainId: domain.id, text, market: marketInfo(market) ? market : null } });
   revalidatePath(`/dashboard/visibility/${domain.id}`);
   return undefined;
 }

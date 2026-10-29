@@ -92,6 +92,7 @@ model Prompt {
   id        String             @id @default(cuid())
   domainId  String
   text      String
+  market    String?            // e.g. "de-DE": ask as a user in that country and language; null = no location
   domain    Domain             @relation(fields: [domainId], references: [id], onDelete: Cascade)
   results   VisibilityResult[]
   createdAt DateTime           @default(now())
@@ -178,6 +179,7 @@ model Page {
   answerSignals   String?  // JSON AnswerSignals
   excerpt         String?  // first substantial paragraph, used to suggest meta descriptions
   headings        String?  // JSON array of H2/H3 texts, used to suggest questions to track
+  hreflang        String?  // JSON array of {lang, href} alternates
   crawl           Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
   fetchedAt       DateTime @default(now())
 

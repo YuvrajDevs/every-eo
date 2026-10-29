@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { Play, Plus } from "lucide-react";
+import { MARKETS } from "@/lib/markets";
 import { addPrompt, importGscQueries, setBrandName, setCategory, setSchedules, startVisibilityRun, type FormState } from "@/app/actions";
 
 function ErrorText({ state }: { state: FormState }) {
@@ -21,6 +22,14 @@ export function AddPromptForm({ domainId }: { domainId: string }) {
     <form action={action}>
       <div className="flex gap-2">
         <input name="text" required placeholder="e.g. best games for couples to play online" aria-label="Question to track" className={pillInput} />
+        <select name="market" aria-label="Market" defaultValue="" className="w-28 shrink-0 rounded-full border border-line bg-panel px-3 text-xs outline-none sm:w-40">
+          <option value="">Any market</option>
+          {MARKETS.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
+        </select>
         <button disabled={pending} className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-ink px-4 py-2.5 text-sm font-medium text-accent-ink hover:opacity-85 disabled:opacity-50">
           <Plus className="size-4" /> Add
         </button>

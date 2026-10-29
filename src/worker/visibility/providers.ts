@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { engineModel, type EngineInfo } from "@/lib/engines";
+import { marketInfo } from "@/lib/markets";
 
 export type Citation = { url: string; title: string | null };
 export type EngineAnswer = { answer: string; citations: Citation[]; costMicros: number };
@@ -33,7 +34,7 @@ async function postJson<T>(url: string, headers: Record<string, string>, body: u
   return JSON.parse(text) as T;
 }
 
-async function askClaude(model: string, prompt: string): Promise<EngineAnswer> {
+async function askClaude(model: string, prompt: string, country?: string): Promise<EngineAnswer> {
   const client = new Anthropic({ timeout: TIMEOUT_MS });
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: prompt }];
   let input = 0;
@@ -49,7 +50,7 @@ async function askClaude(model: string, prompt: string): Promise<EngineAnswer> {
       max_tokens: 4000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
+      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3, ...(country && { user_location: { type: "approximate" as const, country } }) }],
       messages,
     });
     input += res.usage.input_tokens;
@@ -77,11 +78,11 @@ type OpenAIResponse = {
   usage?: { input_tokens?: number; output_tokens?: number };
 };
 
-async function askChatGPT(model: string, prompt: string): Promise<EngineAnswer> {
+async function askChatGPT(model: string, prompt: string, country?: string): Promise<EngineAnswer> {
   const data = await postJson<OpenAIResponse>(
     "https://api.openai.com/v1/responses",
     { authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-    { model, input: prompt, tools: [{ type: "web_search" }] },
+    { model, input: prompt, tools: [{ type: "web_search", ...(country && { user_location: { type: "approximate", country } }) }] },
   );
   const citations: Citation[] = [];
   const text: string[] = [];
@@ -127,11 +128,11 @@ type PerplexityResponse = {
   usage?: { prompt_tokens?: number; completion_tokens?: number };
 };
 
-async function askPerplexity(model: string, prompt: string): Promise<EngineAnswer> {
+async function askPerplexity(model: string, prompt: string, country?: string): Promise<EngineAnswer> {
   const data = await postJson<PerplexityResponse>(
     "https://api.perplexity.ai/chat/completions",
     { authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}` },
-    { model, messages: [{ role: "user", content: prompt }] },
+    { model, messages: [{ role: "user", content: prompt }], ...(country && { web_search_options: { user_location: { country } } }) },
   );
   const fromResults = (data.search_results ?? []).flatMap((r) => (r.url ? [{ url: r.url, title: r.title ?? null }] : []));
   const citations = fromResults.length ? fromResults : (data.citations ?? []).map((url) => ({ url, title: null }));
@@ -142,16 +143,19 @@ async function askPerplexity(model: string, prompt: string): Promise<EngineAnswe
   };
 }
 
-export async function askEngine(engine: EngineInfo, prompt: string): Promise<EngineAnswer> {
+// market: where the question is asked from. Each engine gets the country through its own location setting;
+// Gemini's search grounding has no location parameter, so it runs without one.
+export async function askEngine(engine: EngineInfo, prompt: string, market?: string | null): Promise<EngineAnswer> {
   const model = engineModel(engine);
+  const country = marketInfo(market)?.country;
   switch (engine.id) {
     case "claude":
-      return askClaude(model, prompt);
+      return askClaude(model, prompt, country);
     case "chatgpt":
-      return askChatGPT(model, prompt);
+      return askChatGPT(model, prompt, country);
     case "gemini":
       return askGemini(model, prompt);
     case "perplexity":
-      return askPerplexity(model, prompt);
+      return askPerplexity(model, prompt, country);
   }
 }

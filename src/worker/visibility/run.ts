@@ -53,7 +53,7 @@ export async function runVisibility(runId: string) {
     await Promise.all(
       tasks.slice(i, i + CONCURRENCY).map(async ({ prompt, engine, trial }) => {
         try {
-          const res = await askEngine(engine, prompt.text);
+          const res = await askEngine(engine, prompt.text, prompt.market);
           const { mentioned, cited } = detect(res.answer, res.citations, run.domain.hostname, terms);
           totalCost += res.costMicros;
           await db.visibilityResult.create({

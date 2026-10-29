@@ -13,8 +13,9 @@ after(async () => {
   fs.rmSync("api-test.db", { force: true });
 });
 
-const call = async (handler: (req: Request, ctx?: never) => Promise<Response>, headers: Record<string, string>, params?: Record<string, string>) => {
-  const res = await (handler as (r: Request, c?: unknown) => Promise<Response>)(new Request("http://x/api", { headers }), params ? { params: Promise.resolve(params) } : undefined);
+type Handler = (req: Request, ctx: { params: Promise<{ id: string }> }) => Promise<Response>;
+const call = async (handler: Handler, headers: Record<string, string>, params: { id: string } = { id: "" }) => {
+  const res = await handler(new Request("http://x/api", { headers }), { params: Promise.resolve(params) });
   return { status: res.status, body: await res.json() };
 };
 

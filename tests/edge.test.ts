@@ -157,3 +157,16 @@ test("unknown platforms keep generic advice", async () => {
   assert.equal(done.platform, "unknown");
   assert.ok(done.findings.every((f) => f.fixability === "you" && f.howTo === null));
 });
+
+test("hreflang: reciprocal pair is clean; a one-way link to a crawled page is flagged", async () => {
+  const alt = (self: string, others: string[]) => [self, ...others].map((p) => `<link rel="alternate" hreflang="${p === "/" ? "en" : p.slice(1)}" href="http://localhost${p}">`).join("") + '<link rel="alternate" hreflang="x-default" href="http://localhost/">';
+  const { codes, done } = await audit((path, _ua, res) => {
+    if (path === "/") return send(res, 200, "text/html", html(okHead("Home") + alt("/", ["/de"]), `<h1>H</h1><p>${words(80)}</p><a href="/de">de</a><a href="/fr">fr</a>`));
+    if (path === "/de") return send(res, 200, "text/html", html(okHead("De") + alt("/de", ["/"]), `<h1>D</h1><p>${words(80)}</p>`));
+    if (path === "/fr") return send(res, 200, "text/html", html(okHead("Fr") + alt("/fr", ["/"]), `<h1>F</h1><p>${words(80)}</p>`));
+  });
+  assert.equal(JSON.parse(done.pages.find((p) => p.url.endsWith("/de"))!.hreflang!).length, 3);
+  assert.ok(codes.has("hreflang_no_return"), "/fr points to / but / doesn't point back");
+  assert.equal(done.findings.find((f) => f.code === "hreflang_no_return")!.url, "http://localhost/fr");
+  assert.ok(!codes.has("hreflang_invalid") && !codes.has("hreflang_no_self") && !codes.has("hreflang_no_x_default"));
+});
