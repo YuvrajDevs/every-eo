@@ -58,3 +58,19 @@ async function readCapped(res: Response) {
   }
   return Buffer.concat(chunks).toString("utf8");
 }
+
+export type SafeRequest = { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number };
+
+// For API calls to user-supplied hosts (e.g. a client's WordPress). Same internal-network guard as safeFetch, but
+// redirects are not followed: a redirected POST would silently become a GET or leak credentials to another host.
+export async function safeRequest(url: string, req: SafeRequest = {}) {
+  await assertPublicUrl(url);
+  const res = await fetch(url, {
+    method: req.method ?? "GET",
+    redirect: "manual",
+    headers: { "user-agent": CRAWLER_USER_AGENT, ...req.headers },
+    body: req.body,
+    signal: AbortSignal.timeout(req.timeoutMs ?? TIMEOUT_MS),
+  });
+  return { status: res.status, location: res.headers.get("location"), contentType: res.headers.get("content-type") ?? "", body: await readCapped(res) };
+}

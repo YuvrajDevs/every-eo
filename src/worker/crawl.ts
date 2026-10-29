@@ -32,6 +32,7 @@ type PageData = {
   answerScore: number;
   schemaFindings: FindingInput[];
   renderGap: boolean;
+  excerpt: string | null;
 };
 
 function sameSite(host: string, root: string) {
@@ -87,6 +88,11 @@ function parsePage(url: string, statusCode: number, html: string, rootHost: stri
     .filter((l): l is string => Boolean(l));
   $("script, style, noscript").remove();
   const signals = answerSignals($, jsonLdTypes);
+  const excerpt =
+    $("main p, article p, body p")
+      .map((_, el) => $(el).text().replace(/\s+/g, " ").trim())
+      .get()
+      .find((t) => t.split(" ").length >= 12) ?? null;
   const text = $("body").text().replace(/\s+/g, " ").trim();
   const wordCount = text ? text.split(" ").length : 0;
   const path = new URL(url).pathname;
@@ -115,6 +121,7 @@ function parsePage(url: string, statusCode: number, html: string, rootHost: stri
     }),
     // Little server-rendered text but many script bundles: bots that don't run JavaScript see an empty page.
     renderGap: statusCode < 400 && wordCount < 80 && scriptCount >= 5,
+    excerpt: excerpt ? excerpt.slice(0, 600) : null,
   };
 }
 
@@ -417,6 +424,7 @@ export async function runCrawl(crawlId: string) {
         wordCount: page.wordCount,
         answerScore: page.statusCode < 400 ? page.answerScore : null,
         answerSignals: JSON.stringify(page.signals),
+        excerpt: page.excerpt,
       },
     });
     findings.push(...pageFindings(page, url === homepageUrl), ...page.schemaFindings);

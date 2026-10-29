@@ -28,6 +28,7 @@ model Organization {
   jobs        Job[]
   apiCalls    ApiCallLog[]
   alerts      Alert[]
+  fixes       Fix[]
 }
 
 model Membership {
@@ -56,6 +57,8 @@ model Domain {
   org            Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
   alerts         Alert[]
   entity         EntityRecord?
+  wordpress      WpConnection?
+  fixes          Fix[]
   crawls         Crawl[]
   prompts        Prompt[]
   visibilityRuns VisibilityRun[]
@@ -151,6 +154,7 @@ model Page {
   wordCount       Int      @default(0)
   answerScore     Int?
   answerSignals   String?  // JSON AnswerSignals
+  excerpt         String?  // first substantial paragraph, used to suggest meta descriptions
   crawl           Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
   fetchedAt       DateTime @default(now())
 
@@ -242,4 +246,43 @@ model EntityRecord {
   data      String   // JSON EntityProfile (lib/entity.ts)
   domain    Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
   updatedAt DateTime @updatedAt
+}
+
+// Credentials for the Visibility Connector plugin on a WordPress site. The application password is encrypted (lib/secrets.ts).
+model WpConnection {
+  id            String    @id @default(cuid())
+  domainId      String    @unique
+  siteUrl       String
+  username      String
+  secret        String    // encrypted application password
+  pluginVersion String?
+  yoast         Boolean   @default(false)
+  robotsFile    Boolean   @default(false)
+  lastCheckedAt DateTime?
+  lastError     String?
+  domain        Domain    @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  createdAt     DateTime  @default(now())
+}
+
+// A change the platform made (or offered to make) on a client site, with enough detail to verify and undo it.
+model Fix {
+  id          String    @id @default(cuid())
+  orgId       String
+  domainId    String
+  key         String    // stable identity of the fix, e.g. "org-home", so re-audits update rather than duplicate
+  type        String    // jsonld | meta_description | robots_allow
+  findingCode String
+  title       String
+  url         String?   // target page; null for site-wide fixes
+  payload     String    // JSON sent to the plugin
+  status      String    @default("applied") // applied | verified | not_visible | failed | rolled_back
+  error       String?
+  appliedAt   DateTime?
+  verifiedAt  DateTime?
+  rolledBackAt DateTime?
+  domain      Domain    @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([domainId, key])
 }

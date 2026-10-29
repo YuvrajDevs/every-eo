@@ -9,6 +9,8 @@ import { requireUser } from "@/lib/auth";
 import { createSession, destroySession } from "@/lib/session";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
+import { loadFixContext } from "@/lib/fix-context";
+import { applyFix, connectWordPress, rollbackFix, verifyFix } from "@/lib/fix-engine";
 import { normalizeHostname, UnsafeUrlError } from "@/lib/url-safety";
 
 export type FormState = { error?: string } | undefined;
@@ -179,4 +181,65 @@ export async function saveEntity(domainId: string, _: FormState, formData: FormD
   await db.entityRecord.upsert({ where: { domainId: domain.id }, update: { data }, create: { domainId: domain.id, data } });
   revalidatePath(`/dashboard/entity/${domain.id}`);
   return undefined;
+}
+
+async function fixContext(domainId: string) {
+  const { org, domain } = await ownedDomain(domainId);
+  return { org, domain, ...(await loadFixContext(domain)) };
+}
+
+export async function connectWp(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { domain } = await ownedDomain(domainId);
+  const siteUrl = String(formData.get("siteUrl") ?? "").trim();
+  const username = String(formData.get("username") ?? "").trim();
+  const appPassword = String(formData.get("appPassword") ?? "").trim();
+  if (!siteUrl || !username || !appPassword) return { error: "Fill in the site address, username and application password." };
+  try {
+    await connectWordPress(domain.id, { siteUrl, username, appPassword });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+  revalidatePath(`/dashboard/fixes/${domain.id}`);
+  return undefined;
+}
+
+export async function disconnectWp(domainId: string) {
+  const { domain } = await ownedDomain(domainId);
+  await db.wpConnection.deleteMany({ where: { domainId: domain.id } });
+  revalidatePath(`/dashboard/fixes/${domain.id}`);
+}
+
+// The proposal is rebuilt on the server from the latest audit; the browser only sends which one and any edited text.
+export async function applyProposedFix(domainId: string, key: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { org, domain, proposals } = await fixContext(domainId);
+  const proposal = proposals.find((p) => p.key === key);
+  if (!proposal) return { error: "This fix is no longer suggested by the latest audit. Re-run the audit." };
+  const text = proposal.editableText ? String(formData.get("text") ?? "") : undefined;
+  if (proposal.editableText && text !== undefined && text.trim().length < 20) return { error: "Write a description of at least 20 characters." };
+  try {
+    const fix = await applyFix(org.id, domain.id, proposal, text);
+    revalidatePath(`/dashboard/fixes/${domain.id}`);
+    return fix.status === "failed" ? { error: fix.error ?? "The site rejected the fix." } : undefined;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function ownedFix(fixId: string) {
+  const { org } = await requireUser();
+  const fix = await db.fix.findFirst({ where: { id: fixId, orgId: org.id } });
+  if (!fix) throw new Error("Fix not found");
+  return fix;
+}
+
+export async function recheckFix(fixId: string) {
+  const fix = await ownedFix(fixId);
+  await verifyFix(fix.id);
+  revalidatePath(`/dashboard/fixes/${fix.domainId}`);
+}
+
+export async function rollbackAppliedFix(fixId: string) {
+  const fix = await ownedFix(fixId);
+  await rollbackFix(fix.id);
+  revalidatePath(`/dashboard/fixes/${fix.domainId}`);
 }

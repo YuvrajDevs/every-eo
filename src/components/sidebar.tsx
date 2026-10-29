@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bell, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings, Wrench } from "lucide-react";
+import { BarChart3, Bell, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings } from "lucide-react";
 import { logout } from "@/app/actions";
 import { APP_NAME } from "@/lib/brand";
 
@@ -15,7 +15,6 @@ const NAV = [
 ];
 
 const SOON = [
-  { label: "Auto-fix", icon: Wrench },
   { label: "Reports", icon: BarChart3 },
   { label: "Settings", icon: Settings },
 ];

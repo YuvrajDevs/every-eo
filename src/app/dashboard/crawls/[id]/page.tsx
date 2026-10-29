@@ -76,6 +76,11 @@ export default async function CrawlPage({
         </div>
         <div className="flex flex-wrap gap-2">
           {done && (
+            <Link href={`/dashboard/fixes/${crawl.domainId}`} className="inline-flex items-center gap-2 whitespace-nowrap rounded-full bg-ink px-4 py-2.5 text-xs text-accent-ink hover:opacity-85">
+              Fix issues
+            </Link>
+          )}
+          {done && (
             <Link href={`/dashboard/entity/${crawl.domainId}`} className="inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-line bg-surface px-4 py-2.5 text-xs hover:border-ink">
               Brand profile
             </Link>
