@@ -1,4 +1,8 @@
-import { assertPublicUrl } from "@/lib/url-safety";
+import { Agent, fetch as undiciFetch } from "undici";
+import { assertPublicUrl, makeSafeLookup } from "@/lib/url-safety";
+
+// Every connection re-validates the address it actually connects to (see makeSafeLookup).
+const dispatcher = new Agent({ connect: { lookup: makeSafeLookup() as never } });
 
 export const CRAWLER_USER_AGENT = "AEOAuditBot/0.1 (+site audit requested by the site owner)";
 
@@ -19,10 +23,11 @@ export async function safeFetch(startUrl: string, userAgent = CRAWLER_USER_AGENT
   let url = startUrl;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     await assertPublicUrl(url);
-    const res = await fetch(url, {
+    const res = await undiciFetch(url, {
       redirect: "manual",
       headers: { "user-agent": userAgent, accept: "text/html,application/xml,text/plain;q=0.9,*/*;q=0.5" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
+      dispatcher,
     });
     const location = res.headers.get("location");
     if (res.status >= 300 && res.status < 400 && location) {
@@ -41,7 +46,7 @@ export async function safeFetch(startUrl: string, userAgent = CRAWLER_USER_AGENT
   throw new Error(`Too many redirects starting from ${startUrl}`);
 }
 
-async function readCapped(res: Response) {
+async function readCapped(res: { body: { getReader(): ReadableStreamDefaultReader<Uint8Array> } | null }) {
   if (!res.body) return "";
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -65,12 +70,13 @@ export type SafeRequest = { method?: string; headers?: Record<string, string>; b
 // redirects are not followed: a redirected POST would silently become a GET or leak credentials to another host.
 export async function safeRequest(url: string, req: SafeRequest = {}) {
   await assertPublicUrl(url);
-  const res = await fetch(url, {
+  const res = await undiciFetch(url, {
     method: req.method ?? "GET",
     redirect: "manual",
     headers: { "user-agent": CRAWLER_USER_AGENT, ...req.headers },
     body: req.body,
     signal: AbortSignal.timeout(req.timeoutMs ?? TIMEOUT_MS),
+    dispatcher,
   });
   return { status: res.status, location: res.headers.get("location"), contentType: res.headers.get("content-type") ?? "", body: await readCapped(res) };
 }

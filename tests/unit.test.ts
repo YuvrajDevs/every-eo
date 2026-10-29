@@ -80,6 +80,9 @@ test("SSRF guard blocks private addresses outside test mode", async () => {
     await assert.rejects(assertPublicUrl("http://169.254.169.254/latest/meta-data"));
     await assert.rejects(assertPublicUrl("http://[::ffff:10.0.0.1]/"));
     await assert.rejects(assertPublicUrl("file:///etc/passwd"));
+    await assert.rejects(assertPublicUrl("http://[64:ff9b::a9fe:a9fe]/"), "NAT64 form of the metadata address");
+    // Regression: an IPv4-mapped rule once blocked every public IPv4 site in production.
+    for (const ok of ["http://1.1.1.1/", "http://93.184.216.34/", "http://[2606:4700::1111]/", "http://[::ffff:5db8:d822]/"]) await assert.doesNotReject(assertPublicUrl(ok), ok);
   } finally {
     (process.env as Record<string, string>).NODE_ENV = saved;
     if (savedFlag === undefined) delete process.env.AUDIT_TEST_ALLOW_PRIVATE;
