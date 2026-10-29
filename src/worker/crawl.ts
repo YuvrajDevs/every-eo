@@ -5,6 +5,7 @@ import { analyzeRobots, type FindingInput } from "@/worker/robots";
 import { readSitemaps } from "@/worker/sitemap";
 import { answerScore, answerSignals, type AnswerSignals } from "@/worker/answer";
 import { checkReachability } from "@/worker/reachability";
+import { hasRenderGap, renderCheck } from "@/worker/render";
 import { faqSpamFinding, flattenJsonLd, schemaFindings } from "@/worker/schema";
 import { measurePerformance, performanceFindings } from "@/worker/performance";
 
@@ -435,16 +436,22 @@ export async function runCrawl(crawlId: string) {
   findings.push(...siteFindings(pages, rootHost));
   const faqSpam = faqSpamFinding(pages.map((p) => p.jsonLdTypes));
   if (faqSpam) findings.push(faqSpam);
-  const gap = pages.filter((p) => p.renderGap);
+  // Measure suspected JS-only pages in a real browser; fall back to the HTML heuristic if none is installed.
+  const suspects = pages.filter((p) => p.statusCode < 400 && (p.url === homepageUrl || p.renderGap)).slice(0, 4);
+  const rendered = await renderCheck(suspects.map((p) => ({ url: p.url, rawWords: p.wordCount })));
+  const gap = rendered ? rendered.filter(hasRenderGap) : suspects.filter((p) => p.renderGap).map((p) => ({ url: p.url, rawWords: p.wordCount, renderedWords: 0 }));
   if (gap.length > 0) {
+    const example = gap[0];
     findings.push({
       layer: "geo",
       code: "js_render_gap",
       severity: "high",
       evidence: "plausible",
-      title: `${gap.length} pages look empty without JavaScript`,
-      detail: `These pages ship almost no text in the HTML and rely on scripts to build content: ${paths(gap.map((p) => p.url))}. Several AI crawlers don't run JavaScript, so they may see a blank page. Server-render the main content.`,
-      url: gap[0].url,
+      title: `${gap.length} ${gap.length === 1 ? "page is" : "pages are"} mostly empty without JavaScript`,
+      detail: rendered
+        ? `In a real browser ${paths([example.url])} shows ${example.renderedWords} words, but the raw HTML contains only ${example.rawWords}. Crawlers that don't run JavaScript see the short version. Server-render your main content. Affected: ${paths(gap.map((g) => g.url))}.`
+        : `These pages ship almost no text in the HTML and rely on scripts to build content: ${paths(gap.map((g) => g.url))}. Several AI crawlers don't run JavaScript, so they may see a blank page. Server-render the main content.`,
+      url: example.url,
     });
   }
   const linkedFromSite = new Set(pages.flatMap((p) => p.links));

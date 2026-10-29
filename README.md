@@ -25,6 +25,14 @@ npm run worker:dev   # background worker that runs audits
 - **Job queue**: a database table instead of Redis to keep local setup simple. Swap for BullMQ when volume needs it.
 - **Cost tracking**: `ApiCallLog` records every billable external call per organization, so tier pricing can be checked against real cost once paid APIs are added.
 
+## Tests
+
+```bash
+npm test
+```
+
+Unit tests plus an end-to-end audit against a local fixture site that plants known problems (blocked bots, a firewall that rejects one bot, broken pages, bad schema, a JavaScript-only page) and a visibility run against stubbed AI APIs. It binds port 80 on localhost. Set `CHROMIUM_PATH` to use a specific Chromium for the JavaScript-rendering check; set `RENDER_CHECK=off` to skip the browser and use the HTML heuristic.
+
 ## Safety
 
 All outbound fetches go through `src/lib/safe-fetch.ts`, which blocks internal/private network addresses on every redirect hop so users can't point the crawler at internal systems.
