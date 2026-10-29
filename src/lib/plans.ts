@@ -14,6 +14,7 @@ export type Plan = {
   autoFix: boolean;
   schedules: ("weekly" | "monthly")[];
   priceEnv?: string;
+  api?: boolean; // REST API access
   // Agency plans: how many client workspaces, and what each client workspace gets. Billed per client (Stripe quantity).
   maxClients?: number;
   clientAllowance?: Omit<Plan, "id" | "name" | "priceEnv" | "maxClients" | "clientAllowance">;
@@ -34,10 +35,11 @@ export const PLANS: Record<PlanId, Plan> = {
     autoFix: true,
     schedules: ["weekly", "monthly"],
     priceEnv: "STRIPE_PRICE_AGENCY_CLIENT",
+    api: true,
     maxClients: 100,
     clientAllowance: { sites: 3, pagesPerAudit: 200, promptsPerSite: 50, maxTrials: 5, monthlyAnswers: 4_000, autoFix: true, schedules: ["weekly", "monthly"] },
   },
-  advanced: { id: "advanced", name: "Advanced", sites: 50, pagesPerAudit: 1_000, promptsPerSite: 200, maxTrials: 10, monthlyAnswers: 100_000, autoFix: true, schedules: ["weekly", "monthly"], priceEnv: "STRIPE_PRICE_ADVANCED" },
+  advanced: { id: "advanced", name: "Advanced", sites: 50, pagesPerAudit: 1_000, promptsPerSite: 200, maxTrials: 10, monthlyAnswers: 100_000, autoFix: true, schedules: ["weekly", "monthly"], priceEnv: "STRIPE_PRICE_ADVANCED", api: true },
 };
 
 export function planFor(id: string | null | undefined): Plan {

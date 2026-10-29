@@ -42,6 +42,7 @@ model Organization {
   apiCalls    ApiCallLog[]
   alerts      Alert[]
   fixes       Fix[]
+  apiKeys     ApiKey[]
 }
 
 model Membership {
@@ -414,4 +415,17 @@ model JudgeResult {
   error       String?
   costMicros  Int      @default(0)
   run         JudgeRun @relation(fields: [judgeRunId], references: [id], onDelete: Cascade)
+}
+
+// API keys are shown once; only a SHA-256 hash is stored.
+model ApiKey {
+  id         String       @id @default(cuid())
+  orgId      String
+  name       String
+  prefix     String       // first characters, to recognise a key in the list
+  hash       String       @unique
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
 }

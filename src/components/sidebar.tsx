@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bell, Building2, Palette, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings, CreditCard } from "lucide-react";
+import { BarChart3, Bell, Building2, Code2, Palette, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings, CreditCard } from "lucide-react";
 import { logout } from "@/app/actions";
 import { APP_NAME } from "@/lib/brand";
 
@@ -12,6 +12,7 @@ const NAV = [
   { href: "/dashboard/visibility", label: "AI visibility", icon: Radar, match: (p: string) => p.startsWith("/dashboard/visibility") },
   { href: "/dashboard/alerts", label: "Alerts", icon: Bell, match: (p: string) => p.startsWith("/dashboard/alerts") },
   { href: "/dashboard/costs", label: "Costs", icon: Receipt, match: (p: string) => p.startsWith("/dashboard/costs") },
+  { href: "/dashboard/api", label: "API", icon: Code2, match: (p: string) => p.startsWith("/dashboard/api") },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard, match: (p: string) => p.startsWith("/dashboard/billing") },
 ];
 

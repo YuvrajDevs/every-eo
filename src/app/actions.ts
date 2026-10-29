@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { createClientWorkspace, resolveAccess } from "@/lib/access";
 import { brandingSchema } from "@/lib/branding";
+import { createApiKey } from "@/lib/api";
 import { createSession, destroySession } from "@/lib/session";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
@@ -396,4 +397,21 @@ export async function saveBranding(_: FormState, formData: FormData): Promise<Fo
   await db.organization.update({ where: { id: org.id }, data: parsed.data });
   revalidatePath("/dashboard", "layout");
   return undefined;
+}
+
+export type NewKeyState = { error?: string; key?: string } | undefined;
+
+export async function createKey(_: NewKeyState, formData: FormData): Promise<NewKeyState> {
+  const { org } = await requireUser();
+  if (!planForOrg(org).api) return { error: "API access is included in the Advanced and Agency plans." };
+  if ((await db.apiKey.count({ where: { orgId: org.id, revokedAt: null } })) >= 10) return { error: "Revoke an unused key first (limit 10)." };
+  const { key } = await createApiKey(org.id, String(formData.get("name") ?? "").trim());
+  revalidatePath("/dashboard/api");
+  return { key };
+}
+
+export async function revokeKey(keyId: string) {
+  const { org } = await requireUser();
+  await db.apiKey.updateMany({ where: { id: keyId, orgId: org.id, revokedAt: null }, data: { revokedAt: new Date() } });
+  revalidatePath("/dashboard/api");
 }
