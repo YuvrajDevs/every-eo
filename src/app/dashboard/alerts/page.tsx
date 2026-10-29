@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { markAlertsRead } from "@/app/actions";
 import { Card } from "@/components/ui";
 
-const KIND_LABEL: Record<string, string> = { visibility_drop: "AI visibility", bot_blocked: "Crawler access", new_issue: "Site audit" };
+const KIND_LABEL: Record<string, string> = { visibility_drop: "AI visibility", bot_blocked: "Crawler access", new_issue: "Site audit", schedule_skipped: "Schedule" };
 
 export default async function AlertsPage() {
   const { org } = await requireUser();

@@ -2,6 +2,7 @@
 
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -10,6 +11,8 @@ import { createSession, destroySession } from "@/lib/session";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
 import { loadFixContext } from "@/lib/fix-context";
+import { planFor, PLANS, type PlanId } from "@/lib/plans";
+import { createCheckout, createPortal } from "@/lib/stripe";
 import { applyFix, connectWordPress, rollbackFix, verifyFix } from "@/lib/fix-engine";
 import { normalizeHostname, UnsafeUrlError } from "@/lib/url-safety";
 
@@ -73,6 +76,11 @@ export async function addDomainAndCrawl(_: FormState, formData: FormData): Promi
     if (err instanceof UnsafeUrlError) return { error: err.message };
     throw err;
   }
+  const plan = planFor(org.plan);
+  const exists = await db.domain.findUnique({ where: { orgId_hostname: { orgId: org.id, hostname } } });
+  if (!exists && (await db.domain.count({ where: { orgId: org.id } })) >= plan.sites) {
+    return { error: `Your ${plan.name} plan includes ${plan.sites} ${plan.sites === 1 ? "site" : "sites"}. Upgrade on the Billing page to add more.` };
+  }
   const domain = await db.domain.upsert({
     where: { orgId_hostname: { orgId: org.id, hostname } },
     update: {},
@@ -97,15 +105,14 @@ async function ownedDomain(domainId: string) {
   return { org, domain };
 }
 
-const MAX_PROMPTS = 15;
-
 export async function addPrompt(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
-  const { domain } = await ownedDomain(domainId);
+  const { org, domain } = await ownedDomain(domainId);
+  const MAX_PROMPTS = planFor(org.plan).promptsPerSite;
   const text = String(formData.get("text") ?? "").trim().replace(/\s+/g, " ");
   if (text.length < 5) return { error: "Write the question the way a customer would ask it." };
   if (text.length > 300) return { error: "Keep questions under 300 characters." };
   const count = await db.prompt.count({ where: { domainId: domain.id } });
-  if (count >= MAX_PROMPTS) return { error: `You can track up to ${MAX_PROMPTS} questions per site for now.` };
+  if (count >= MAX_PROMPTS) return { error: `You can track up to ${MAX_PROMPTS} questions per site on your plan.` };
   await db.prompt.create({ data: { domainId: domain.id, text } });
   revalidatePath(`/dashboard/visibility/${domain.id}`);
   return undefined;
@@ -137,10 +144,11 @@ export async function startVisibilityRun(domainId: string, _: FormState, formDat
 }
 
 export async function setSchedules(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
-  const { domain } = await ownedDomain(domainId);
+  const { org, domain } = await ownedDomain(domainId);
+  const allowed = planFor(org.plan).schedules as string[];
   const pick = (key: string) => {
     const v = String(formData.get(key) ?? "off");
-    return (SCHEDULES as readonly string[]).includes(v) ? v : "off";
+    return (SCHEDULES as readonly string[]).includes(v) && (v === "off" || allowed.includes(v)) ? v : "off";
   };
   const auditSchedule = pick("auditSchedule");
   const visibilitySchedule = pick("visibilitySchedule");
@@ -212,6 +220,7 @@ export async function disconnectWp(domainId: string) {
 // The proposal is rebuilt on the server from the latest audit; the browser only sends which one and any edited text.
 export async function applyProposedFix(domainId: string, key: string, _: FormState, formData: FormData): Promise<FormState> {
   const { org, domain, proposals } = await fixContext(domainId);
+  if (!planFor(org.plan).autoFix) return { error: "Automatic fixes aren't included in your plan." };
   const proposal = proposals.find((p) => p.key === key);
   if (!proposal) return { error: "This fix is no longer suggested by the latest audit. Re-run the audit." };
   const text = proposal.editableText ? String(formData.get("text") ?? "") : undefined;
@@ -242,4 +251,24 @@ export async function rollbackAppliedFix(fixId: string) {
   const fix = await ownedFix(fixId);
   await rollbackFix(fix.id);
   revalidatePath(`/dashboard/fixes/${fix.domainId}`);
+}
+
+async function appBaseUrl() {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  const h = await headers();
+  return `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
+}
+
+export async function startCheckout(planId: string) {
+  const { org, user } = await requireUser();
+  const plan = PLANS[planId as PlanId];
+  if (!plan || plan.id === "trial") throw new Error("Unknown plan");
+  const url = await createCheckout(org, plan, user.email, await appBaseUrl());
+  redirect(url);
+}
+
+export async function openBillingPortal() {
+  const { org } = await requireUser();
+  if (!org.stripeCustomerId) throw new Error("No billing account yet");
+  redirect(await createPortal(org.stripeCustomerId, await appBaseUrl()));
 }

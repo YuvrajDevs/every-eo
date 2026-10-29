@@ -20,7 +20,11 @@ model User {
 model Organization {
   id          String       @id @default(cuid())
   name        String
-  plan        String       @default("trial")
+  plan        String       @default("trial") // see lib/plans.ts
+  planStatus  String?      // Stripe subscription status, e.g. active | past_due | canceled
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
+  currentPeriodEnd     DateTime?
   createdAt   DateTime     @default(now())
   memberships Membership[]
   domains     Domain[]
@@ -285,4 +289,11 @@ model Fix {
   createdAt   DateTime  @default(now())
 
   @@unique([domainId, key])
+}
+
+// Stripe webhook events already processed, so a retried delivery is never applied twice.
+model StripeEvent {
+  id        String   @id // Stripe event id
+  type      String
+  createdAt DateTime @default(now())
 }
