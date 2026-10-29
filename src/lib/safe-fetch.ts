@@ -10,6 +10,7 @@ export type SafeResponse = {
   finalUrl: string;
   status: number;
   contentType: string;
+  headers: Record<string, string>;
   body: string;
 };
 
@@ -33,6 +34,7 @@ export async function safeFetch(startUrl: string, userAgent = CRAWLER_USER_AGENT
       finalUrl: url,
       status: res.status,
       contentType: res.headers.get("content-type") ?? "",
+      headers: Object.fromEntries(res.headers),
       body: await readCapped(res),
     };
   }

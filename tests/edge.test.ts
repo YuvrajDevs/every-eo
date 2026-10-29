@@ -134,3 +134,26 @@ test("a site that is down fails the audit cleanly", async () => {
   const { runCrawl } = await import("@/worker/crawl");
   await assert.rejects(runCrawl(crawl.id));
 });
+
+test("builder sites get platform-specific steps and platform-controlled issues are marked", async () => {
+  const sq = (body: string) => html(`<!-- This is Squarespace. --><link href="https://static1.squarespace.com/static/x.css"><title>Studio</title>`, body);
+  const { done } = await audit((path, _ua, res) => {
+    if (path === "/robots.txt") return send(res, 200, "text/plain", "User-agent: GPTBot\nDisallow: /\nUser-agent: PerplexityBot\nDisallow: /\n");
+    if (path === "/") return send(res, 200, "text/html", sq(`<h1>Studio</h1><p>${words(80)}</p>`));
+  });
+  assert.equal(done.platform, "squarespace");
+  const perplexity = done.findings.find((f) => f.code === "bot_blocked_perplexitybot")!;
+  assert.equal(perplexity.fixability, "platform");
+  assert.match(perplexity.howTo!, /Squarespace/);
+  const training = done.findings.find((f) => f.code === "bot_training_optout_gptbot")!;
+  assert.equal(training.fixability, "setting");
+  assert.ok(done.findings.find((f) => f.code === "missing_meta_description")?.howTo?.includes("SEO"));
+});
+
+test("unknown platforms keep generic advice", async () => {
+  const { done } = await audit((path, _ua, res) => {
+    if (path === "/") return send(res, 200, "text/html", html(okHead("Home"), `<h1>H</h1><p>${words(80)}</p>`));
+  });
+  assert.equal(done.platform, "unknown");
+  assert.ok(done.findings.every((f) => f.fixability === "you" && f.howTo === null));
+});

@@ -5,6 +5,7 @@ import { analyzeRobots, type FindingInput } from "@/worker/robots";
 import { readSitemaps } from "@/worker/sitemap";
 import { answerScore, answerSignals, type AnswerSignals } from "@/worker/answer";
 import { checkReachability } from "@/worker/reachability";
+import { detectPlatform, guidanceFor } from "@/lib/platforms";
 import { hasRenderGap, renderCheck } from "@/worker/render";
 import { faqSpamFinding, flattenJsonLd, schemaFindings } from "@/worker/schema";
 import { measurePerformance, performanceFindings } from "@/worker/performance";
@@ -308,6 +309,7 @@ export async function runCrawl(crawlId: string) {
     first = await safeFetch(`${origin}/`);
   }
   origin = new URL(first.finalUrl).origin;
+  const platform = detectPlatform(first.body, first.headers);
   const homepageUrl = first.finalUrl;
 
   const [robots, perf] = await Promise.all([analyzeRobots(origin), measurePerformance(homepageUrl)]);
@@ -328,7 +330,7 @@ export async function runCrawl(crawlId: string) {
       botAccess: JSON.stringify(botAccess),
     },
   });
-  await db.crawl.update({ where: { id: crawlId }, data: { performance: JSON.stringify(perf) } });
+  await db.crawl.update({ where: { id: crawlId }, data: { performance: JSON.stringify(perf), platform } });
 
   const findings: FindingInput[] = [...robots.findings, ...reach.findings, ...performanceFindings(perf)];
   const badSitemaps = robots.sitemaps.filter((s) => {
@@ -467,7 +469,12 @@ export async function runCrawl(crawlId: string) {
     });
   }
 
-  await db.finding.createMany({ data: collapseRepeats(findings).map((f) => ({ ...f, crawlId })) });
+  await db.finding.createMany({
+    data: collapseRepeats(findings).map((f) => {
+      const g = guidanceFor(platform, f.code);
+      return { ...f, crawlId, fixability: g?.fixability ?? "you", howTo: g?.howTo ?? null };
+    }),
+  });
   await db.apiCallLog.createMany({
     data: [
       { orgId: crawl.orgId, provider: "crawl", operation: "page_fetch", units: pages.length + 1, costMicros: 0 },

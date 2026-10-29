@@ -11,7 +11,7 @@ export async function getSites(orgId: string) {
       crawls: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        include: { findings: { select: { severity: true } }, robots: { select: { botAccess: true } } },
+        include: { findings: { select: { severity: true, fixability: true } }, robots: { select: { botAccess: true } } },
       },
     },
   });

@@ -7,6 +7,7 @@ import { healthScore } from "@/lib/health";
 import type { BotAccessResult, BotPurpose } from "@/lib/ai-bots";
 import type { PerformanceReport } from "@/worker/performance";
 import { recrawl } from "@/app/actions";
+import { PLATFORM_LABELS, type PlatformId } from "@/lib/platforms";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { Card, EvidenceBadge, LayerBadge, ScoreRing, SectionTitle, SeverityBadge, StatTile, StatusPill } from "@/components/ui";
 
@@ -63,6 +64,9 @@ export default async function CrawlPage({
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <h1 className="truncate font-display text-4xl sm:text-5xl">{crawl.domain.hostname}</h1>
             <StatusPill status={crawl.status} />
+            {crawl.platform && crawl.platform !== "unknown" && (
+              <span className="rounded-full bg-panel px-3 py-1 text-xs">Built with {PLATFORM_LABELS[crawl.platform as PlatformId] ?? crawl.platform}</span>
+            )}
           </div>
           <p className="mt-2 text-xs text-muted">
             {inProgress
@@ -207,9 +211,20 @@ export default async function CrawlPage({
                       <SeverityBadge severity={f.severity} />
                       <LayerBadge layer={f.layer} />
                       <EvidenceBadge evidence={f.evidence} />
+                      {f.fixability === "platform" && (
+                        <span title="Your site builder controls this; it doesn't count against your score" className="rounded-full bg-panel px-2.5 py-0.5 text-[11px] text-muted">
+                          Controlled by your platform
+                        </span>
+                      )}
                     </div>
                     <p className="mt-2.5 font-semibold">{f.title}</p>
                     <p className="mt-1 text-xs leading-relaxed text-muted">{f.detail}</p>
+                    {f.howTo && (
+                      <p className="mt-2 rounded-xl bg-surface px-3 py-2 text-xs leading-relaxed">
+                        <span className="font-semibold">How to fix on {PLATFORM_LABELS[crawl.platform as PlatformId] ?? "your platform"}: </span>
+                        {f.howTo}
+                      </p>
+                    )}
                     {f.url && (
                       <a href={f.url} target="_blank" rel="noopener noreferrer" className="mt-2 block truncate text-[11px] text-ink/60 underline-offset-4 hover:underline">
                         {f.url}

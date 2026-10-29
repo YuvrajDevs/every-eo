@@ -113,6 +113,7 @@ model Crawl {
   pagesCount  Int          @default(0)
   error       String?
   performance String?      // JSON PerformanceReport for the homepage
+  platform    String?      // detected site builder, see lib/platforms.ts
   org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   domain      Domain       @relation(fields: [domainId], references: [id], onDelete: Cascade)
   pages       Page[]
@@ -168,6 +169,8 @@ model Finding {
   title     String
   detail    String
   url       String?
+  fixability String  @default("you") // you | setting | platform
+  howTo     String?  // platform-specific steps
   crawl     Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 

@@ -6,6 +6,7 @@ import { healthScore } from "@/lib/health";
 import { engineInfo } from "@/lib/engines";
 import { pct, wilson } from "@/lib/stats";
 import { PrintButton } from "@/components/print-button";
+import { PLATFORM_LABELS, type PlatformId } from "@/lib/platforms";
 
 const GRADES = [
   { key: "proven", label: "Proven", note: "Backed by platform documentation or consistent evidence. Fix these first." },
@@ -47,6 +48,7 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
         <h1 className="mt-1 font-display text-5xl">{crawl.domain.hostname}</h1>
         <p className="mt-3 text-sm">
           Technical health <strong>{score}/100</strong> across {crawl.pagesCount} pages, with {crawl.findings.length} findings.
+          {crawl.platform && crawl.platform !== "unknown" && ` Built with ${PLATFORM_LABELS[crawl.platform as PlatformId] ?? crawl.platform}; issues your platform controls are marked and don't count against the score.`}
         </p>
       </header>
 
@@ -95,6 +97,8 @@ export default async function ReportPage({ params }: { params: Promise<{ id: str
                   <p className="text-xs uppercase tracking-wide text-muted">{f.severity} · {f.layer}</p>
                   <p className="font-semibold">{f.title}</p>
                   <p className="mt-1 text-sm text-muted">{f.detail}</p>
+                  {f.howTo && <p className="mt-1 text-sm"><strong>How to fix:</strong> {f.howTo}</p>}
+                  {f.fixability === "platform" && <p className="mt-1 text-xs text-muted">Controlled by your platform — not counted in the score.</p>}
                   {f.url && <p className="mt-1 truncate text-xs text-muted">{f.url}</p>}
                 </li>
               ))}
