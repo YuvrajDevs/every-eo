@@ -12,8 +12,35 @@ model User {
   email        String       @unique
   name         String
   passwordHash String
+  emailVerifiedAt DateTime?
   createdAt    DateTime     @default(now())
   memberships  Membership[]
+  sessions     Session[]
+  emailTokens  EmailToken[]
+}
+
+// Server-side session record, so logging out (or an admin) can revoke a session even though the cookie is a JWT.
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// One-time email links (verification). Only the SHA-256 of the token is stored.
+model EmailToken {
+  id        String    @id @default(cuid())
+  userId    String
+  purpose   String    // verify_email
+  hash      String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
 }
 
 // One workspace per client business, or per agency (which later manages many client domains).

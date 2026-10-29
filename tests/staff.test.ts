@@ -13,8 +13,8 @@ after(async () => {
   fs.rmSync("staff-test.db", { force: true });
 });
 
-test("staff list comes from STAFF_EMAILS, case-insensitive; empty means nobody", async () => {
-  const { isStaff } = await import("@/lib/staff");
+test("staff list comes from STAFF_EMAILS, case-insensitive; empty means nobody; email must be verified", async () => {
+  const { isStaffEmail: isStaff, isStaff: isStaffUser } = await import("@/lib/staff");
   delete process.env.STAFF_EMAILS;
   assert.equal(isStaff("a@b.co"), false);
   process.env.STAFF_EMAILS = " Ops@Company.com, cs@company.com ,";
@@ -22,6 +22,8 @@ test("staff list comes from STAFF_EMAILS, case-insensitive; empty means nobody",
   assert.equal(isStaff("CS@company.com"), true);
   assert.equal(isStaff("ops@company.com.evil"), false);
   assert.equal(isStaff(""), false);
+  assert.equal(isStaffUser({ email: "ops@company.com", emailVerifiedAt: null }), false, "unverified address never gets staff access");
+  assert.equal(isStaffUser({ email: "ops@company.com", emailVerifiedAt: new Date() }), true);
   delete process.env.STAFF_EMAILS;
 });
 

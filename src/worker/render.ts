@@ -14,7 +14,9 @@ export async function renderCheck(pages: { url: string; rawWords: number }[]): P
     const { chromium } = await import("playwright-core");
     browser = await chromium.launch({
       executablePath: process.env.CHROMIUM_PATH || undefined,
-      args: ["--no-sandbox"],
+      // Untrusted sites' JavaScript runs here. Keep Chromium's sandbox on unless running as root (where it can't
+      // start), and turn off the JIT, the most common source of renderer exploits.
+      args: [...(process.getuid?.() === 0 ? ["--no-sandbox"] : []), "--js-flags=--jitless", "--disable-dev-shm-usage", "--disable-gpu"],
     });
   } catch {
     return null;
@@ -22,11 +24,13 @@ export async function renderCheck(pages: { url: string; rawWords: number }[]): P
   try {
     const out: RenderResult[] = [];
     for (const p of pages) {
-      const context = await browser.newContext({ javaScriptEnabled: true });
+      const context = await browser.newContext({ javaScriptEnabled: true, acceptDownloads: false, serviceWorkers: "block" });
       // The browser follows its own requests, so each one gets the same internal-network check as safeFetch.
       await context.route("**/*", async (route) => {
         try {
-          await assertPublicUrl(route.request().url());
+          const u = route.request().url();
+          if (!/^https?:/i.test(u) && !u.startsWith("data:") && !u.startsWith("blob:")) throw new Error("blocked scheme");
+          if (/^https?:/i.test(u)) await assertPublicUrl(u);
           await route.continue();
         } catch {
           await route.abort();

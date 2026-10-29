@@ -59,7 +59,9 @@ async function main() {
   const { db } = await import("@/lib/db");
 
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });
-  const ctxA = await browser.newContext();
+  // Each simulated user comes from its own address (one trusted proxy hop), like real traffic.
+  const ip = (n: number) => ({ extraHTTPHeaders: { "x-forwarded-for": `198.51.100.${n}` } });
+  const ctxA = await browser.newContext(ip(1));
   const a = await ctxA.newPage();
   const pageErrors: string[] = [];
   a.on("pageerror", (e) => pageErrors.push(e.message));
@@ -351,7 +353,7 @@ async function main() {
   const gscQueries = path.join(tmp, "Queries.csv");
   fs.writeFileSync(gscQueries, 'Top queries,Clicks,Impressions,CTR,Position\n"best virtual mailbox for travelers",3,"2,400",0.1%,9.1\nacme mail login,30,90,33%,1\n');
   await a.goto(`${BASE}/dashboard/visibility/${domain.id}`);
-  await a.click("summary:has-text('Import Search Console queries')");
+  await a.click("summary:has-text('Import Search Console queries')", { timeout: 10_000 }).catch(async () => assert.fail(`visibility page: ${(await text(a)).slice(0, 300)}`));
   await a.setInputFiles("input[aria-label='Search Console Queries CSV']", gscQueries);
   await a.click("button:has-text('Import queries')");
   await a.waitForSelector("text=best virtual mailbox for travelers");
@@ -392,7 +394,7 @@ async function main() {
   step("extractability judge stays disabled without an API key and nothing runs");
 
   console.log("Phase 4: agency, white-label, API, staff, rate limits");
-  const ctxG = await browser.newContext();
+  const ctxG = await browser.newContext(ip(3));
   const g = await ctxG.newPage();
   g.on("pageerror", (e) => pageErrors.push(e.message));
   await g.goto(`${BASE}/signup`);
@@ -471,7 +473,7 @@ async function main() {
 
   const staffOutsider = await g.goto(`${BASE}/staff`);
   assert.equal(staffOutsider?.status(), 404);
-  const ctxS = await browser.newContext();
+  const ctxS = await browser.newContext(ip(4));
   const st = await ctxS.newPage();
   await st.goto(`${BASE}/signup`);
   await st.fill("input[name=name]", "Sam Staff");
@@ -480,6 +482,8 @@ async function main() {
   await st.fill("input[name=password]", "password1234");
   await st.click("form button");
   await st.waitForURL(/\/dashboard/);
+  assert.equal((await st.goto(`${BASE}/staff`))?.status(), 404, "a listed staff email isn't enough until it's verified");
+  await db.user.update({ where: { email: "staff@example.com" }, data: { emailVerifiedAt: new Date() } });
   await st.goto(`${BASE}/staff`);
   body = await text(st);
   assert.ok(body.includes("Northwind Agency") && body.includes("Acme Bakery") && body.includes("Alice Co"));
@@ -503,7 +507,7 @@ async function main() {
   await ctxG.close();
 
   console.log("Phone width");
-  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, storageState: await ctxA.storageState() });
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, storageState: await ctxA.storageState(), ...ip(5) });
   const m = await phone.newPage();
   const overflowing: string[] = [];
   for (const path of ["/dashboard", "/dashboard/sites", `/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, "/dashboard/visibility", `/dashboard/visibility/${domain.id}`, `/dashboard/entity/${domain.id}`, `/dashboard/fixes/${domain.id}`, `/dashboard/truth/${domain.id}`, `/dashboard/attribution/${domain.id}`, `/dashboard/presence/${domain.id}`, "/dashboard/alerts", "/dashboard/costs", "/dashboard/billing", "/dashboard/api"]) {
@@ -516,7 +520,7 @@ async function main() {
   step("no page scrolls sideways at phone width (390px)");
 
   console.log("Tenant isolation");
-  const ctxB = await browser.newContext();
+  const ctxB = await browser.newContext(ip(2));
   const b = await ctxB.newPage();
   await signup(b, "Bob", "bob@example.com");
   await b.waitForURL(/\/dashboard/);
@@ -526,7 +530,8 @@ async function main() {
   }
   step("another organisation gets 404 on crawl, report, visibility, brand profile and fixes pages");
   await b.goto(`${BASE}/dashboard/sites`);
-  assert.ok(!(await text(b)).includes("localhost") && !(await text(b)).includes("example.com"));
+  const bobSites = (await text(b)).replace(/[\w.+-]+@example\.com/g, ""); // the verify-email banner shows Bob's address
+  assert.ok(!bobSites.includes("localhost") && !bobSites.includes("example.com"));
   await b.goto(`${BASE}/dashboard/costs`);
   assert.ok(!(await text(b)).includes("ChatGPT"));
   await b.goto(`${BASE}/dashboard/alerts`);

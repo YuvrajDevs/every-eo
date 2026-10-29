@@ -12,7 +12,9 @@ import { brandingSchema } from "@/lib/branding";
 import { createApiKey } from "@/lib/api";
 import { rateLimit } from "@/lib/rate-limit";
 import { isStaff } from "@/lib/staff";
-import { createSession, destroySession } from "@/lib/session";
+import { createSession, destroySession, readSession } from "@/lib/session";
+import { clientIpFrom } from "@/lib/client-ip";
+import { sendVerificationEmail } from "@/lib/verification";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
 import { loadFixContext } from "@/lib/fix-context";
@@ -40,20 +42,39 @@ function keep(formData: FormData) {
   return Object.fromEntries([...formData.entries()].filter(([k, v]) => typeof v === "string" && !SECRET_FIELDS.has(k) && !k.startsWith("$")) as [string, string][]);
 }
 
+// bcrypt only uses the first 72 bytes of a password; longer ones would silently be cut, so they're refused.
+const passwordField = z
+  .string()
+  .min(10, "Use at least 10 characters")
+  .refine((p) => Buffer.byteLength(p, "utf8") <= 72, "Use at most 72 bytes (about 72 letters)");
+
 const signupSchema = z.object({
   agency: z.literal("yes").optional(),
   name: z.string().trim().min(1, "Enter your name").max(100),
   company: z.string().trim().min(1, "Enter your company or agency name").max(100),
   email: z.email("Enter a valid email").trim().toLowerCase(),
-  password: z.string().min(10, "Use at least 10 characters").max(200),
+  password: passwordField,
 });
 
 // Client IP for rate limiting. Behind a proxy, only the left-most X-Forwarded-For entry set by your own proxy is
-// trustworthy; configure the proxy to overwrite (not append to) the header.
+// trustworthy; see lib/client-ip.ts (TRUST_PROXY_HOPS).
 async function clientIp() {
-  const h = await headers();
-  return h.get("x-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || "unknown";
+  return clientIpFrom(await headers());
 }
+
+// Some actions call other servers or do heavy work; cap them per workspace so one account can't abuse them.
+function limitFor(orgId: string, action: string, max: number, windowMinutes: number) {
+  const r = rateLimit(`action:${action}:${orgId}`, max, windowMinutes * 60_000);
+  return r.ok ? null : `You're doing that too often. Try again in ${minutes(r.resetMs)} minutes.`;
+}
+
+// Billing, API keys, branding and client management are for workspace owners (and the owning agency's staff).
+function requireManager(role: string) {
+  if (role !== "owner" && role !== "agency") throw new Error("Only workspace owners can do this.");
+}
+
+// Compared against when an email has no account, so a login takes the same time either way (no account probing).
+const DUMMY_HASH = bcrypt.hashSync("timing-equaliser-not-a-password", 12);
 
 const minutes = (ms: number) => Math.max(1, Math.ceil(ms / 60_000));
 
@@ -75,12 +96,17 @@ export async function signup(_: FormState, formData: FormData): Promise<FormStat
     return { user, org };
   });
   await createSession({ userId: user.id, orgId: org.id });
+  try {
+    await sendVerificationEmail(user, await appBaseUrl());
+  } catch (err) {
+    console.error("[mail] verification email failed:", err);
+  }
   redirect("/dashboard");
 }
 
 const loginSchema = z.object({
   email: z.email("Enter a valid email").trim().toLowerCase(),
-  password: z.string().min(1, "Enter your password"),
+  password: z.string().min(1, "Enter your password").max(1000),
 });
 
 export async function login(_: FormState, formData: FormData): Promise<FormState> {
@@ -94,8 +120,8 @@ export async function login(_: FormState, formData: FormData): Promise<FormState
     where: { email: parsed.data.email },
     include: { memberships: { orderBy: { createdAt: "asc" }, take: 1 } },
   });
-  const ok = user && (await bcrypt.compare(parsed.data.password, user.passwordHash));
-  if (!ok || user.memberships.length === 0) return { error: "Email or password is incorrect.", values: keep(formData) };
+  const ok = (await bcrypt.compare(parsed.data.password, user?.passwordHash ?? DUMMY_HASH)) && Boolean(user);
+  if (!ok || !user || user.memberships.length === 0) return { error: "Email or password is incorrect.", values: keep(formData) };
   await createSession({ userId: user.id, orgId: user.memberships[0].orgId });
   redirect("/dashboard");
 }
@@ -114,6 +140,8 @@ export async function addDomainAndCrawl(_: FormState, formData: FormData): Promi
     if (err instanceof UnsafeUrlError) return { error: err.message };
     throw err;
   }
+  const limited = limitFor(org.id, "crawl", 30, 60);
+  if (limited) return { error: limited };
   const plan = planForOrg(org);
   const exists = await db.domain.findUnique({ where: { orgId_hostname: { orgId: org.id, hostname } } });
   if (!exists && (await db.domain.count({ where: { orgId: org.id } })) >= plan.sites) {
@@ -130,6 +158,7 @@ export async function addDomainAndCrawl(_: FormState, formData: FormData): Promi
 
 export async function recrawl(domainId: string) {
   const { org } = await requireUser();
+  if (limitFor(org.id, "crawl", 30, 60)) throw new Error("Too many audits started this hour. Try again later.");
   const domain = await db.domain.findFirst({ where: { id: domainId, orgId: org.id } });
   if (!domain) throw new Error("Domain not found");
   const crawlId = await startCrawlFor(org.id, domain.id);
@@ -137,10 +166,10 @@ export async function recrawl(domainId: string) {
 }
 
 async function ownedDomain(domainId: string) {
-  const { org } = await requireUser();
+  const { org, role } = await requireUser();
   const domain = await db.domain.findFirst({ where: { id: domainId, orgId: org.id } });
   if (!domain) throw new Error("Domain not found");
-  return { org, domain };
+  return { org, domain, role };
 }
 
 export async function addPrompt(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
@@ -236,7 +265,10 @@ async function fixContext(domainId: string) {
 }
 
 export async function connectWp(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
-  const { domain } = await ownedDomain(domainId);
+  const { org, domain, role } = await ownedDomain(domainId);
+  requireManager(role);
+  const limited = limitFor(org.id, "wp-connect", 10, 10);
+  if (limited) return { error: limited, values: keep(formData) };
   const siteUrl = String(formData.get("siteUrl") ?? "").trim();
   const username = String(formData.get("username") ?? "").trim();
   const appPassword = String(formData.get("appPassword") ?? "").trim();
@@ -251,7 +283,8 @@ export async function connectWp(domainId: string, _: FormState, formData: FormDa
 }
 
 export async function disconnectWp(domainId: string) {
-  const { domain } = await ownedDomain(domainId);
+  const { domain, role } = await ownedDomain(domainId);
+  requireManager(role);
   await db.wpConnection.deleteMany({ where: { domainId: domain.id } });
   revalidatePath(`/dashboard/fixes/${domain.id}`);
 }
@@ -259,6 +292,8 @@ export async function disconnectWp(domainId: string) {
 // The proposal is rebuilt on the server from the latest audit; the browser only sends which one and any edited text.
 export async function applyProposedFix(domainId: string, key: string, _: FormState, formData: FormData): Promise<FormState> {
   const { org, domain, proposals } = await fixContext(domainId);
+  const limited = limitFor(org.id, "fix", 60, 10);
+  if (limited) return { error: limited };
   if (!planForOrg(org).autoFix) return { error: "Automatic fixes aren't included in your plan." };
   const proposal = proposals.find((p) => p.key === key);
   if (!proposal) return { error: "This fix is no longer suggested by the latest audit. Re-run the audit." };
@@ -277,6 +312,7 @@ async function ownedFix(fixId: string) {
   const { org } = await requireUser();
   const fix = await db.fix.findFirst({ where: { id: fixId, orgId: org.id } });
   if (!fix) throw new Error("Fix not found");
+  if (limitFor(org.id, "fix", 60, 10)) throw new Error("Too many fix actions. Try again in a few minutes.");
   return fix;
 }
 
@@ -292,14 +328,18 @@ export async function rollbackAppliedFix(fixId: string) {
   revalidatePath(`/dashboard/fixes/${fix.domainId}`);
 }
 
+// Links in emails and payment return URLs. In production this must come from APP_URL, never the request's Host
+// header, which a client controls.
 async function appBaseUrl() {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "production") throw new Error("Set APP_URL to the app's public address.");
   const h = await headers();
   return `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
 }
 
 export async function startCheckout(planId: string) {
-  const { org, user } = await requireUser();
+  const { org, user, role } = await requireUser();
+  requireManager(role);
   const plan = PLANS[planId as PlanId];
   if (!plan || plan.id === "trial") throw new Error("Unknown plan");
   if ((plan.id === "agency") !== (org.kind === "agency")) throw new Error("This plan isn't available for this workspace");
@@ -309,13 +349,16 @@ export async function startCheckout(planId: string) {
 }
 
 export async function openBillingPortal() {
-  const { org } = await requireUser();
+  const { org, role } = await requireUser();
+  requireManager(role);
   if (!org.stripeCustomerId) throw new Error("No billing account yet");
   redirect(await createPortal(org.stripeCustomerId, await appBaseUrl()));
 }
 
 export async function saveFacts(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
-  const { domain } = await ownedDomain(domainId);
+  const { org, domain } = await ownedDomain(domainId);
+  const limited = limitFor(org.id, "facts", 30, 10);
+  if (limited) return { error: limited, values: keep(formData) };
   const parsed = parseFactsForm(formData);
   if (!parsed.success) return { error: parsed.error, values: keep(formData) };
   const data = JSON.stringify(parsed.data);
@@ -338,7 +381,9 @@ export async function setCategory(domainId: string, _: FormState, formData: Form
 const MAX_CSV_BYTES = 2 * 1024 * 1024;
 
 export async function importGscQueries(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
-  const { domain } = await ownedDomain(domainId);
+  const { org, domain } = await ownedDomain(domainId);
+  const limited = limitFor(org.id, "import", 20, 10);
+  if (limited) return { error: limited };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { error: "Choose the Queries.csv file from your Search Console export." };
   if (file.size > MAX_CSV_BYTES) return { error: "That file is over 2 MB. Export a shorter date range." };
@@ -350,7 +395,9 @@ export async function importGscQueries(domainId: string, _: FormState, formData:
 }
 
 export async function importSearchDays(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
-  const { domain } = await ownedDomain(domainId);
+  const { org, domain } = await ownedDomain(domainId);
+  const limited = limitFor(org.id, "import", 20, 10);
+  if (limited) return { error: limited };
   const source = String(formData.get("source") ?? "");
   if (!(source in SEARCH_SOURCES)) return { error: "Pick which report this file is." };
   const file = formData.get("file");
@@ -388,7 +435,10 @@ export async function startJudgeRun(crawlId: string, _: FormState, formData: For
 }
 
 export async function addClient(_: FormState, formData: FormData): Promise<FormState> {
-  const { org } = await requireUser();
+  const { org, role } = await requireUser();
+  requireManager(role);
+  const limited = limitFor(org.id, "add-client", 30, 60);
+  if (limited) return { error: limited };
   if (org.kind !== "agency") return { error: "Only agency workspaces can add clients." };
   const name = String(formData.get("name") ?? "").trim().slice(0, 100);
   if (name.length < 2) return { error: "Enter the client's name." };
@@ -413,12 +463,14 @@ export async function switchWorkspace(orgId: string) {
   const { user } = await requireUser();
   const target = await resolveAccess(user.id, orgId);
   if (!target) throw new Error("Workspace not found");
-  await createSession({ userId: user.id, orgId });
+  const current = await readSession();
+  await createSession({ userId: user.id, orgId }, current?.sid);
   redirect(target.org.kind === "agency" ? "/dashboard/clients" : "/dashboard");
 }
 
 export async function saveBranding(_: FormState, formData: FormData): Promise<FormState> {
-  const { org } = await requireUser();
+  const { org, role } = await requireUser();
+  requireManager(role);
   if (org.kind !== "agency") return { error: "Branding is available to agency workspaces.", values: keep(formData) };
   const parsed = brandingSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message, values: keep(formData) };
@@ -430,7 +482,10 @@ export async function saveBranding(_: FormState, formData: FormData): Promise<Fo
 export type NewKeyState = { error?: string; key?: string } | undefined;
 
 export async function createKey(_: NewKeyState, formData: FormData): Promise<NewKeyState> {
-  const { org } = await requireUser();
+  const { org, role } = await requireUser();
+  requireManager(role);
+  const limited = limitFor(org.id, "create-key", 10, 60);
+  if (limited) return { error: limited };
   if (!planForOrg(org).api) return { error: "API access is included in the Advanced and Agency plans." };
   if ((await db.apiKey.count({ where: { orgId: org.id, revokedAt: null } })) >= 10) return { error: "Revoke an unused key first (limit 10)." };
   const { key } = await createApiKey(org.id, String(formData.get("name") ?? "").trim());
@@ -439,17 +494,26 @@ export async function createKey(_: NewKeyState, formData: FormData): Promise<New
 }
 
 export async function revokeKey(keyId: string) {
-  const { org } = await requireUser();
+  const { org, role } = await requireUser();
+  requireManager(role);
   await db.apiKey.updateMany({ where: { id: keyId, orgId: org.id, revokedAt: null }, data: { revokedAt: new Date() } });
   revalidatePath("/dashboard/api");
 }
 
 export async function addStaffNote(orgId: string, _: FormState, formData: FormData): Promise<FormState> {
   const { user } = await requireUser();
-  if (!isStaff(user.email)) throw new Error("Not found");
+  if (!isStaff(user)) throw new Error("Not found");
+  if (!(await db.organization.findUnique({ where: { id: orgId } }))) throw new Error("Not found");
   const body = String(formData.get("body") ?? "").trim().slice(0, 2000);
   if (!body) return { error: "Write a note first." };
   await db.staffNote.create({ data: { orgId, author: user.email, body } });
   revalidatePath(`/staff/${orgId}`);
   return undefined;
+}
+
+export async function resendVerification() {
+  const { user } = await requireUser();
+  if (user.emailVerifiedAt) return;
+  if (!rateLimit(`verify-resend:${user.id}`, 3, 60 * 60_000).ok) throw new Error("Too many emails sent. Try again in an hour.");
+  await sendVerificationEmail(user, await appBaseUrl());
 }

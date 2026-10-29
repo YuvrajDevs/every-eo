@@ -4,7 +4,12 @@ import { usageThisMonth } from "@/lib/usage";
 
 // Staff are listed by email in STAFF_EMAILS (comma-separated). Kept out of the database on purpose: granting
 // cross-customer access should take a deploy, not a row edit.
-export function isStaff(email: string) {
+// Staff must also have confirmed their email: otherwise anyone could register with a listed address first.
+export function isStaff(user: { email: string; emailVerifiedAt: Date | null }) {
+  return user.emailVerifiedAt !== null && isStaffEmail(user.email);
+}
+
+export function isStaffEmail(email: string) {
   const list = (process.env.STAFF_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
