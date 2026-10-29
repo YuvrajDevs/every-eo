@@ -1,12 +1,13 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { execSync } from "node:child_process";
 
 process.env.DATABASE_URL = "file:./sched-test.db";
 
 before(() => {
   fs.rmSync("sched-test.db", { force: true });
-  require("node:child_process").execSync("npx prisma migrate deploy", { stdio: "pipe", env: { ...process.env } });
+  execSync("npx prisma migrate deploy", { stdio: "pipe", env: { ...process.env } });
 });
 after(async () => {
   await (await import("@/lib/db")).db.$disconnect();
