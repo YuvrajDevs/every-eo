@@ -50,9 +50,10 @@ async function main() {
   fs.rmSync("ui-test.db", { force: true });
   execSync("npx prisma migrate deploy", { env, stdio: "pipe" });
   const fixture = await startFixture();
-  procs.push(spawn("npx", ["next", "start", "-p", "3100"], { env: { ...env, NODE_ENV: "production" }, stdio: "ignore" }));
+  // Each child gets its own process group so cleanup can stop npx and everything it started.
+  procs.push(spawn("npx", ["next", "start", "-p", "3100"], { env: { ...env, NODE_ENV: "production" }, stdio: "ignore", detached: true }));
   // Worker runs in test mode so it may crawl the localhost fixture; the web app never fetches sites itself.
-  procs.push(spawn("npx", ["tsx", "src/worker/index.ts"], { env: { ...env, NODE_ENV: "test", AUDIT_TEST_ALLOW_PRIVATE: "1", RENDER_CHECK: process.env.RENDER_CHECK ?? "" }, stdio: "ignore" }));
+  procs.push(spawn("npx", ["tsx", "src/worker/index.ts"], { env: { ...env, NODE_ENV: "test", AUDIT_TEST_ALLOW_PRIVATE: "1", RENDER_CHECK: process.env.RENDER_CHECK ?? "" }, stdio: "ignore", detached: true }));
   await waitFor(async () => (await fetch(`${BASE}/login`)).ok, "web server");
   const { db } = await import("@/lib/db");
 
@@ -447,10 +448,11 @@ main()
   });
 
 function cleanup(code: number) {
-  for (const p of procs) p.kill("SIGKILL");
-  try {
-    execSync("pkill -f next-server || true; pkill -f 'src/worker/index.ts' || true", { stdio: "ignore", shell: "/bin/bash" });
-  } catch {}
+  for (const p of procs) {
+    try {
+      if (p.pid) process.kill(-p.pid, "SIGKILL");
+    } catch {}
+  }
   fs.rmSync("ui-test.db", { force: true });
   fs.rmSync(".ui-test-tmp/Queries.csv", { force: true });
   fs.rmSync(".ui-test-tmp/Dates.csv", { force: true });
