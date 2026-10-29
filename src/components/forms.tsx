@@ -23,10 +23,18 @@ function Field({ label, ...props }: { label: string } & React.InputHTMLAttribute
   );
 }
 
-export function SignupForm() {
+export function SignupForm({ site }: { site?: string }) {
   const [state, action, pending] = useActionState(signup, undefined);
   return (
     <form action={action} className="space-y-4">
+      {site && (
+        <>
+          <input type="hidden" name="site" value={site} />
+          <p className="rounded-2xl bg-mint px-4 py-3 text-sm">
+            We&apos;ll add <strong>{site}</strong> and run its full audit as soon as you sign up.
+          </p>
+        </>
+      )}
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Your name" name="name" autoComplete="name" required defaultValue={state?.values?.name} />
         <Field label="Company or agency" name="company" autoComplete="organization" required defaultValue={state?.values?.company} />
@@ -81,7 +89,7 @@ export function AddDomainForm({ variant = "light" }: { variant?: "light" | "dark
           placeholder="yourwebsite.com"
           required
           aria-label="Website domain"
-          className="min-w-0 flex-1 bg-transparent px-4 py-2 text-ink outline-none placeholder:text-muted"
+          className="min-w-0 flex-1 bg-transparent px-4 py-2 text-ink outline-none placeholder:text-muted/60"
         />
         <button
           disabled={pending}

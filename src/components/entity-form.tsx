@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { saveEntity, type FormState } from "@/app/actions";
 import type { EntityProfile } from "@/lib/entity";
 
-const input = "w-full rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm outline-none placeholder:text-muted focus:border-ink";
+const input = "w-full rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm outline-none placeholder:text-muted/60 focus:border-ink";
 
 function Field({ label, hint, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
   return (

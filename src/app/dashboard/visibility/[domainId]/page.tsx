@@ -120,10 +120,10 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
 
       {run && overall.total > 0 && (
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-[1.4fr_repeat(4,1fr)]">
-          <div className="col-span-2 rounded-3xl bg-dark p-6 xl:col-span-1">
-            <p className="text-xs text-ink/60">Mentioned across all answers</p>
+          <div className="col-span-2 rounded-3xl bg-dark p-6 text-on-dark xl:col-span-1">
+            <p className="text-xs text-on-dark/60">Mentioned across all answers</p>
             <p className="mt-2 font-display text-5xl">{pct(overallCi.rate)}</p>
-            <p className="mt-2 text-xs text-ink/60">
+            <p className="mt-2 text-xs text-on-dark/60">
               {overall.mentioned} of {overall.total} answers. The true rate is likely between {pct(overallCi.low)} and {pct(overallCi.high)}.
             </p>
           </div>

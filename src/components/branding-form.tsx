@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { saveBranding, type FormState } from "@/app/actions";
 
-const input = "w-full rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm outline-none placeholder:text-muted focus:border-ink";
+const input = "w-full rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm outline-none placeholder:text-muted/60 focus:border-ink";
 
 export function BrandingForm({ values }: { values: { brandName: string; brandLogoUrl: string; brandColor: string; reportFooter: string } }) {
   const [state, action, pending] = useActionState<FormState, FormData>(saveBranding, undefined);

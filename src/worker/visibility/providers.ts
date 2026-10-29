@@ -26,23 +26,32 @@ function estimate(model: string, input: number, output: number, searches: number
 
 const RETRY_DELAYS_MS = [5_000, 15_000];
 
+type PostOptions = { timeoutMs?: number; retryDelaysMs?: number[] };
+
 // Retries only "temporarily overloaded" responses (502/503/504). Quota and auth errors fail straight away.
-async function postJson<T>(url: string, headers: Record<string, string>, body: unknown): Promise<T> {
+async function postJson<T>(url: string, headers: Record<string, string>, body: unknown, opts: PostOptions = {}): Promise<T> {
+  const delays = opts.retryDelaysMs ?? RETRY_DELAYS_MS;
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? TIMEOUT_MS),
     });
     const text = await res.text();
     if (res.ok) return JSON.parse(text) as T;
-    if ([502, 503, 504].includes(res.status) && attempt < RETRY_DELAYS_MS.length) {
-      await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]));
+    if ([502, 503, 504].includes(res.status) && attempt < delays.length) {
+      await new Promise((r) => setTimeout(r, delays[attempt]));
       continue;
     }
     throw new Error(`${res.status}: ${text.slice(0, 300)}`);
   }
+}
+
+// Overloaded (5xx) or no answer in time: worth trying another model rather than failing.
+function isTransient(err: unknown) {
+  if (err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError")) return true;
+  return err instanceof Error && /^(502|503|504):/.test(err.message);
 }
 
 async function askClaude(model: string, prompt: string, country?: string): Promise<EngineAnswer> {
@@ -115,22 +124,43 @@ type GeminiResponse = {
   usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
 };
 
-async function askGemini(model: string, prompt: string, webSearch: boolean): Promise<EngineAnswer> {
-  let data: GeminiResponse;
-  try {
-    data = await postJson<GeminiResponse>(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      { "x-goog-api-key": process.env.GEMINI_API_KEY ?? "" },
-      { contents: [{ role: "user", parts: [{ text: prompt }] }], ...(webSearch && { tools: [{ google_search: {} }] }) },
-    );
-  } catch (err) {
-    if (webSearch && err instanceof Error && err.message.startsWith("429") && /quota/i.test(err.message)) {
-      throw new Error(
-        "Gemini web search isn't included in this key's quota (free keys usually have none). Enable billing on the Google project, or set GEMINI_WEB_SEARCH=\"off\" in .env to check answers without web search.",
+// Free Gemini models are often briefly overloaded or slow, so each call gets a shorter time limit and falls back
+// through other Flash models (GEMINI_FALLBACK_MODELS) before giving up.
+const GEMINI_TIMEOUT_MS = 45_000;
+
+function geminiModels(primary: string) {
+  const fallbacks = (process.env.GEMINI_FALLBACK_MODELS ?? "gemini-flash-lite-latest,gemini-flash-latest")
+    .split(",")
+    .map((m) => m.trim())
+    .filter(Boolean);
+  return [...new Set([primary, ...fallbacks])];
+}
+
+async function askGemini(primary: string, prompt: string, webSearch: boolean): Promise<EngineAnswer> {
+  let data: GeminiResponse | null = null;
+  let model = primary;
+  let lastErr: unknown;
+  for (const m of geminiModels(primary)) {
+    try {
+      data = await postJson<GeminiResponse>(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`,
+        { "x-goog-api-key": process.env.GEMINI_API_KEY ?? "" },
+        { contents: [{ role: "user", parts: [{ text: prompt }] }], ...(webSearch && { tools: [{ google_search: {} }] }) },
+        { timeoutMs: GEMINI_TIMEOUT_MS, retryDelaysMs: [3_000] },
       );
+      model = m;
+      break;
+    } catch (err) {
+      if (webSearch && err instanceof Error && err.message.startsWith("429") && /quota/i.test(err.message)) {
+        throw new Error(
+          "Gemini web search isn't included in this key's quota (free keys usually have none). Enable billing on the Google project, or set GEMINI_WEB_SEARCH=\"off\" in .env to check answers without web search.",
+        );
+      }
+      if (!isTransient(err)) throw err;
+      lastErr = err;
     }
-    throw err;
   }
+  if (!data) throw lastErr instanceof Error ? new Error(`Gemini is overloaded right now (${lastErr.message.slice(0, 120)})`) : new Error("Gemini is overloaded right now");
   const cand = data.candidates?.[0];
   // Gemini returns redirect links; the title holds the source domain, so keep both.
   const citations = (cand?.groundingMetadata?.groundingChunks ?? []).flatMap((c) => (c.web?.uri ? [{ url: c.web.uri, title: c.web.title ?? null }] : []));

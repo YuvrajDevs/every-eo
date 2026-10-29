@@ -4,6 +4,7 @@ export type JobPayloads = {
   crawl: { crawlId: string };
   visibility: { runId: string };
   judge: { judgeRunId: string };
+  publicAi: { publicAuditId: string };
 };
 
 export async function enqueueJob<T extends keyof JobPayloads>(orgId: string, type: T, payload: JobPayloads[T]) {

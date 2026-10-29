@@ -7,6 +7,7 @@ import { runDueSchedules } from "@/worker/scheduler";
 import { crawlAlerts, visibilityAlerts } from "@/worker/alerts";
 import { truthCheck } from "@/worker/truth";
 import { runJudge } from "@/worker/judge";
+import { runPublicAi } from "@/worker/public-ai";
 import { deliverAlerts, deliverDueReports } from "@/lib/notify";
 
 const POLL_MS = 2000;
@@ -58,6 +59,8 @@ async function execute(type: string, payload: unknown) {
     }
     case "judge":
       return runJudge((payload as JobPayloads["judge"]).judgeRunId);
+    case "publicAi":
+      return runPublicAi((payload as JobPayloads["publicAi"]).publicAuditId);
     default:
       throw new Error(`Unknown job type: ${type}`);
   }
@@ -72,7 +75,7 @@ async function processJob(job: NonNullable<Awaited<ReturnType<typeof claimNextJo
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     // Visibility and judge runs spend money on every call, so they never retry automatically.
-    const finalFailure = job.attempts >= MAX_ATTEMPTS || job.type === "visibility" || job.type === "judge";
+    const finalFailure = job.attempts >= MAX_ATTEMPTS || job.type === "visibility" || job.type === "judge" || job.type === "publicAi";
     await db.job.update({
       where: { id: job.id },
       data: finalFailure
@@ -89,6 +92,12 @@ async function processJob(job: NonNullable<Awaited<ReturnType<typeof claimNextJo
       await db.visibilityRun.update({
         where: { id: (payload as JobPayloads["visibility"]).runId },
         data: { status: "failed", error: message, finishedAt: new Date() },
+      });
+    }
+    if (finalFailure && job.type === "publicAi") {
+      await db.publicAudit.update({
+        where: { id: (payload as JobPayloads["publicAi"]).publicAuditId },
+        data: { aiStatus: "failed", aiResult: JSON.stringify({ engine: "gemini", reason: "The AI check couldn't finish. Try again later." }) },
       });
     }
     if (finalFailure && job.type === "judge") {

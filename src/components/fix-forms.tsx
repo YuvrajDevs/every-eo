@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { applyProposedFix, connectWp, type FormState } from "@/app/actions";
 
-const input = "w-full rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm outline-none placeholder:text-muted focus:border-ink";
+const input = "w-full rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm outline-none placeholder:text-muted/60 focus:border-ink";
 
 function ErrorText({ state }: { state: FormState }) {
   return state?.error ? (

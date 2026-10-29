@@ -123,13 +123,13 @@ export default async function CrawlPage({
 
       {done && (
         <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-[1.3fr_1fr_1fr_1fr]">
-          <div className="flex items-center gap-5 rounded-3xl bg-dark p-6 text-ink col-span-2 sm:col-span-3 xl:col-span-1">
-            <div className="text-ink">
+          <div className="flex items-center gap-5 rounded-3xl bg-dark p-6 text-on-dark col-span-2 sm:col-span-3 xl:col-span-1">
+            <div className="text-on-dark">
               <ScoreRing score={score} size={88} />
             </div>
             <div>
               <p className="font-display text-2xl">Technical health</p>
-              <p className="mt-1 text-xs text-white/60">
+              <p className="mt-1 text-xs text-on-dark/60">
                 {count("high") === 0 && blockedSearch === 0
                   ? "Nothing is blocking search engines or AI from your site."
                   : `${count("high")} urgent ${count("high") === 1 ? "fix" : "fixes"} will raise this the most.`}

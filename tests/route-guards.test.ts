@@ -17,9 +17,9 @@ test("every protected page and route handler performs its own access check", () 
     if (f.includes("/api/stripe/")) return !/verifyWebhook\(/.test(src);
     if (f.includes("/api/shopify/webhooks")) return !/verifyWebhookHmac\(/.test(src);
     if (f.includes("/api/shopify/")) return !/requireUser\(\)/.test(src);
-    return false; // public: /, /login, /signup, /verify, /api/plugin
+    return false; // public: /, /audit, /audit/[id] (free audit), /login, /signup, /verify, /api/plugin
   });
   assert.deepEqual(missing, []);
   const publicOnes = files.filter((f) => !/(dashboard|staff|api\/v1|api\/stripe|api\/shopify)/.test(f)).map((f) => f.replace("src/app", ""));
-  assert.deepEqual(publicOnes.sort(), ["/api/plugin/route.ts", "/login/page.tsx", "/page.tsx", "/signup/page.tsx", "/verify/page.tsx"], "a new public route appeared; review it and add it here deliberately");
+  assert.deepEqual(publicOnes.sort(), ["/api/plugin/route.ts", "/audit/[id]/page.tsx", "/audit/page.tsx", "/login/page.tsx", "/page.tsx", "/signup/page.tsx", "/verify/page.tsx"], "a new public route appeared; review it and add it here deliberately");
 });

@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { saveFacts, type FormState } from "@/app/actions";
 
-const area = "w-full min-h-24 rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm outline-none placeholder:text-muted focus:border-ink";
+const area = "w-full min-h-24 rounded-2xl border border-line bg-panel px-4 py-2.5 text-sm outline-none placeholder:text-muted/60 focus:border-ink";
 
 function Area({ label, hint, ...props }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; hint: string }) {
   return (

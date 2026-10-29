@@ -22,7 +22,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
       </div>
 
       <div className="hidden p-4 lg:block">
-        <div className="flex h-full flex-col justify-between rounded-[2rem] bg-dark p-10 text-ink">
+        <div className="flex h-full flex-col justify-between rounded-[2rem] bg-dark p-10 text-on-dark">
           <p className="font-display text-5xl leading-[1.25]">
             Find out if AI can even <span className="rounded-2xl bg-highlight px-3 text-on-highlight">see</span> your site.
           </p>
@@ -51,7 +51,7 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
                 ))}
               </ul>
             </div>
-            <p className="flex items-center gap-2 text-xs text-white/60">
+            <p className="flex items-center gap-2 text-xs text-on-dark/60">
               <Check className="size-3.5" /> Example report. Yours takes about a minute.
             </p>
           </div>

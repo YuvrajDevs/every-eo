@@ -125,7 +125,9 @@ async function main() {
       .replace("[domainId]", victor.domain.id)
       .replace("[orgId]", victor.org.id)
       .replace("[id]", r.startsWith("/api/v1/sites") ? victor.domain.id : victor.crawl.id);
-  const PUBLIC = new Set(["/", "/login", "/signup", "/verify", "/api/plugin", "/favicon.ico"]);
+  // /audit is the public free-audit form. /audit/[id] is public too, but only for free-audit IDs: requesting it with a
+  // customer's crawl ID (as this sweep does) must 404, which the check below enforces.
+  const PUBLIC = new Set(["/", "/login", "/signup", "/verify", "/api/plugin", "/favicon.ico", "/audit"]);
   const leaks: string[] = [];
   for (const r of routes) {
     const url = `${BASE}${fill(r)}`;

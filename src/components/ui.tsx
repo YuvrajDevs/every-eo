@@ -14,7 +14,7 @@ export function SectionTitle({ children, action }: { children: React.ReactNode; 
 }
 
 export const inputClass =
-  "w-full rounded-full border border-line bg-surface px-5 py-3 text-ink outline-none transition placeholder:text-muted focus:border-ink";
+  "w-full rounded-full border border-line bg-surface px-5 py-3 text-ink outline-none transition placeholder:text-muted/60 focus:border-ink";
 
 export const buttonClass =
   "inline-flex items-center justify-center gap-2 rounded-full bg-accent px-5 py-3 font-medium text-accent-ink transition hover:opacity-85 disabled:opacity-50";

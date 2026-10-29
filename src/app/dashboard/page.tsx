@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { getSites } from "@/lib/sites";
 import { AddDomainForm } from "@/components/forms";
 import { SiteCard } from "@/components/site-card";
+import { SetupChecklist } from "@/components/setup-checklist";
 import { Card, LayerBadge, SectionTitle, SeverityBadge, StatTile } from "@/components/ui";
 
 export default async function DashboardPage() {
@@ -25,18 +26,20 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <section className="grid grid-cols-1 gap-4 rounded-[2rem] bg-dark p-6 text-ink sm:p-8 xl:grid-cols-[1fr_1.15fr]">
+      <section className="grid grid-cols-1 gap-4 rounded-[2rem] bg-dark p-6 text-on-dark sm:p-8 xl:grid-cols-[1fr_1.15fr]">
         <div className="flex flex-col justify-between gap-8">
           <div>
-            <p className="text-sm text-white/60">Hi, {firstName}</p>
+            <p className="text-sm text-on-dark/60">Hi, {firstName}</p>
             <h1 className="mt-3 font-display text-4xl sm:text-5xl">
               {sites.length === 0
                 ? "Let's audit your first website."
-                : totalHigh > 0
-                  ? `${totalHigh} urgent ${totalHigh === 1 ? "issue" : "issues"} to fix.`
-                  : "Your sites look healthy."}
+                : latestIds.length === 0
+                  ? "Your first audit is running."
+                  : totalHigh > 0
+                    ? `${totalHigh} urgent ${totalHigh === 1 ? "issue" : "issues"} to fix.`
+                    : "Your sites look healthy."}
             </h1>
-            <p className="mt-3 max-w-md text-white/60">
+            <p className="mt-3 max-w-md text-on-dark/60">
               Enter a domain. We check up to 50 pages for what stops you ranking in Google or getting recommended by AI.
             </p>
           </div>
@@ -50,11 +53,13 @@ export default async function DashboardPage() {
             ))}
           </div>
         ) : (
-          <div className="hidden place-items-center rounded-3xl border border-dashed border-white/20 p-8 text-center text-white/50 xl:grid">
+          <div className="hidden place-items-center rounded-3xl border border-dashed border-on-dark/20 p-8 text-center text-on-dark/50 xl:grid">
             Your websites will show up here.
           </div>
         )}
       </section>
+
+      <SetupChecklist orgId={org.id} emailVerified={Boolean(user.emailVerifiedAt)} />
 
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Websites" value={sites.length} icon={Globe} />

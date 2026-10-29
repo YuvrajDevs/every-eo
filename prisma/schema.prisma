@@ -186,6 +186,7 @@ model Crawl {
   pages       Page[]
   findings    Finding[]
   robots      RobotsReport?
+  publicAudits PublicAudit[]
   judgeRuns   JudgeRun[]
   createdAt   DateTime     @default(now())
   startedAt   DateTime?
@@ -474,4 +475,21 @@ model StaffNote {
   body      String
   org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   createdAt DateTime     @default(now())
+}
+
+// Free audit from the public /audit page (no account). The crawl belongs to a hidden "public" workspace nobody can
+// log into; the optional AI check asks Gemini one customer question a few times.
+model PublicAudit {
+  id        String   @id @default(cuid())
+  hostname  String
+  crawlId   String
+  question  String?
+  aiStatus  String   @default("none") // none | queued | running | done | failed | skipped
+  aiResult  String?  // JSON PublicAiResult
+  ipKey     String   // hashed visitor IP, for rate limits only
+  crawl     Crawl    @relation(fields: [crawlId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([hostname, createdAt])
+  @@index([createdAt])
 }

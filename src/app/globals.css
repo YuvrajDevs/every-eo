@@ -1,32 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #111218;
-  --surface: #1b1c24;
-  --panel: #15161c;
-  --ink: #ecedf3;
-  --muted: #8d90a3;
-  --line: #2a2c37;
-  --dark: #23253a;
-  --accent: #ecedf3;
-  --accent-ink: #111218;
+  --bg: #ffffff;
+  --surface: #f5f5f2;
+  --panel: #ffffff;
+  --ink: #1c1d29;
+  --muted: #676a7c;
+  --line: #e5e5df;
+  /* Dark accent blocks (welcome banner, score cards) keep their own light text. */
+  --dark: #1f2132;
+  --on-dark: #f5f6fa;
+  --accent: #1c1d29;
+  --accent-ink: #ffffff;
 
-  /* Deep tints so light text stays readable on colored cards. */
-  --lavender: #2f2a52;
-  --peach: #42301f;
-  --mint: #193b2c;
-  --rose: #45232a;
-  --lime: #363d1a;
-  --sky: #1d3047;
+  /* Bright pastels for colored cards; dark text stays readable on all of them. */
+  --lavender: #dcd2ff;
+  --peach: #ffdcbc;
+  --mint: #c3f1da;
+  --rose: #ffd3d5;
+  --lime: #ecf66e;
+  --sky: #cfe5ff;
 
-  /* Bright accent reserved for small highlights, always with dark text. */
-  --highlight: #e2f05c;
-  --on-highlight: #15161c;
+  --highlight: #e4f45c;
+  --on-highlight: #1c1d29;
 
-  --high: #ff7b7b;
-  --medium: #f2a65a;
-  --low: #7fb0ee;
-  --ok: #5fd394;
+  --high: #c62f36;
+  --medium: #b45f06;
+  --low: #3767a8;
+  --ok: #18784a;
 }
 
 @theme inline {
@@ -37,6 +38,7 @@
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-dark: var(--dark);
+  --color-on-dark: var(--on-dark);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   --color-lavender: var(--lavender);
@@ -57,7 +59,13 @@
 }
 
 html {
-  color-scheme: dark;
+  color-scheme: light;
+}
+
+/* Example text in empty fields stays clearly lighter than real values. */
+::placeholder {
+  color: color-mix(in srgb, var(--muted) 65%, transparent);
+  opacity: 1;
 }
 
 body {

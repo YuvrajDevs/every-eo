@@ -14,7 +14,7 @@ function ErrorText({ state }: { state: FormState }) {
 }
 
 const pillInput =
-  "min-w-0 flex-1 rounded-full border border-line bg-panel px-4 py-2.5 text-ink outline-none placeholder:text-muted focus:border-ink";
+  "min-w-0 flex-1 rounded-full border border-line bg-panel px-4 py-2.5 text-ink outline-none placeholder:text-muted/60 focus:border-ink";
 
 export function AddPromptForm({ domainId }: { domainId: string }) {
   const [state, action, pending] = useActionState(addPrompt.bind(null, domainId), undefined);

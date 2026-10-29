@@ -55,6 +55,7 @@ const signupSchema = z.object({
   company: z.string().trim().min(1, "Enter your company or agency name").max(100),
   email: z.email("Enter a valid email").trim().toLowerCase(),
   password: passwordField,
+  site: z.string().trim().max(300).optional(),
 });
 
 // Client IP for rate limiting. Behind a proxy, only the left-most X-Forwarded-For entry set by your own proxy is
@@ -84,7 +85,7 @@ export async function signup(_: FormState, formData: FormData): Promise<FormStat
   if (!limit.ok) return { error: `Too many sign-ups from your network. Try again in ${minutes(limit.resetMs)} minutes.`, values: keep(formData) };
   const parsed = signupSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message, values: keep(formData) };
-  const { name, company, email, password, agency } = parsed.data;
+  const { name, company, email, password, agency, site } = parsed.data;
 
   if (await db.user.findUnique({ where: { email } })) {
     return { error: "An account with this email already exists. Log in instead.", values: keep(formData) };
@@ -101,6 +102,19 @@ export async function signup(_: FormState, formData: FormData): Promise<FormStat
     await sendVerificationEmail(user, await appBaseUrl());
   } catch (err) {
     console.error("[mail] verification email failed:", err);
+  }
+  // Coming from a free audit: add that site and start its full audit straight away.
+  if (site) {
+    let hostname: string | null = null;
+    try {
+      hostname = normalizeHostname(site);
+    } catch {
+      hostname = null;
+    }
+    if (hostname) {
+      const domain = await db.domain.create({ data: { orgId: org.id, hostname } });
+      redirect(`/dashboard/crawls/${await startCrawl(org.id, domain.id)}`);
+    }
   }
   redirect("/dashboard");
 }
