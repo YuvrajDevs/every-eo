@@ -5,6 +5,7 @@ import { analyzeRobots, type FindingInput } from "@/worker/robots";
 import { readSitemaps } from "@/worker/sitemap";
 import { answerScore, answerSignals, type AnswerSignals } from "@/worker/answer";
 import { checkReachability } from "@/worker/reachability";
+import { faqSpamFinding, flattenJsonLd, schemaFindings } from "@/worker/schema";
 import { measurePerformance, performanceFindings } from "@/worker/performance";
 
 const CONCURRENCY = 4;
@@ -27,6 +28,8 @@ type PageData = {
   links: string[];
   signals: AnswerSignals;
   answerScore: number;
+  schemaFindings: FindingInput[];
+  renderGap: boolean;
 };
 
 function sameSite(host: string, root: string) {
@@ -57,12 +60,16 @@ function collectJsonLdTypes(node: unknown, out: string[]) {
   if (obj["@graph"]) collectJsonLdTypes(obj["@graph"], out);
 }
 
-function parsePage(url: string, statusCode: number, html: string, rootHost: string): PageData {
+function parsePage(url: string, statusCode: number, html: string, rootHost: string, isHomepage: boolean): PageData {
   const $ = cheerio.load(html);
   const jsonLdTypes: string[] = [];
+  const ldNodes: ReturnType<typeof flattenJsonLd> = [];
+  const scriptCount = $("script[src]").length;
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
-      collectJsonLdTypes(JSON.parse($(el).text()), jsonLdTypes);
+      const parsed = JSON.parse($(el).text());
+      collectJsonLdTypes(parsed, jsonLdTypes);
+      flattenJsonLd(parsed, ldNodes);
     } catch {
       jsonLdTypes.push("(invalid JSON-LD)");
     }
@@ -79,6 +86,8 @@ function parsePage(url: string, statusCode: number, html: string, rootHost: stri
   $("script, style, noscript").remove();
   const signals = answerSignals($, jsonLdTypes);
   const text = $("body").text().replace(/\s+/g, " ").trim();
+  const wordCount = text ? text.split(" ").length : 0;
+  const path = new URL(url).pathname;
 
   return {
     url,
@@ -90,10 +99,20 @@ function parsePage(url: string, statusCode: number, html: string, rootHost: stri
     canonical,
     metaRobots,
     jsonLdTypes: [...new Set(jsonLdTypes)],
-    wordCount: text ? text.split(" ").length : 0,
+    wordCount,
     links,
     signals,
     answerScore: answerScore(signals),
+    schemaFindings: schemaFindings({
+      url,
+      nodes: ldNodes,
+      isHomepage,
+      visibleText: text.toLowerCase(),
+      wordCount,
+      looksLikeArticle: /\/(blog|news|articles?|guides?|resources|posts?)\//i.test(path) && wordCount >= 400,
+    }),
+    // Little server-rendered text but many script bundles: bots that don't run JavaScript see an empty page.
+    renderGap: statusCode < 400 && wordCount < 80 && scriptCount >= 5,
   };
 }
 
@@ -377,7 +396,7 @@ export async function runCrawl(crawlId: string) {
     if (!sameSite(new URL(res.finalUrl).hostname, rootHost)) return;
     if (processed.has(res.finalUrl)) return;
     processed.add(res.finalUrl);
-    const page = parsePage(res.finalUrl, res.status, res.body, rootHost);
+    const page = parsePage(res.finalUrl, res.status, res.body, rootHost, url === homepageUrl);
     pages.push(page);
     await db.page.create({
       data: {
@@ -397,7 +416,7 @@ export async function runCrawl(crawlId: string) {
         answerSignals: JSON.stringify(page.signals),
       },
     });
-    findings.push(...pageFindings(page, url === homepageUrl));
+    findings.push(...pageFindings(page, url === homepageUrl), ...page.schemaFindings);
     for (const link of page.links) {
       if (!seen.has(link)) {
         seen.add(link);
@@ -414,6 +433,20 @@ export async function runCrawl(crawlId: string) {
   }
 
   findings.push(...siteFindings(pages, rootHost));
+  const faqSpam = faqSpamFinding(pages.map((p) => p.jsonLdTypes));
+  if (faqSpam) findings.push(faqSpam);
+  const gap = pages.filter((p) => p.renderGap);
+  if (gap.length > 0) {
+    findings.push({
+      layer: "geo",
+      code: "js_render_gap",
+      severity: "high",
+      evidence: "plausible",
+      title: `${gap.length} pages look empty without JavaScript`,
+      detail: `These pages ship almost no text in the HTML and rely on scripts to build content: ${paths(gap.map((p) => p.url))}. Several AI crawlers don't run JavaScript, so they may see a blank page. Server-render the main content.`,
+      url: gap[0].url,
+    });
+  }
   const linkedFromSite = new Set(pages.flatMap((p) => p.links));
   const orphans = [...sitemapSet].filter((u) => processed.has(u) && !linkedFromSite.has(u));
   if (orphans.length > 0) {
