@@ -1,9 +1,11 @@
+import { requireStaff } from "@/lib/staff-auth";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { Card, SectionTitle } from "@/components/ui";
 import { StaffNoteForm } from "@/components/staff-note-form";
 
 export default async function StaffWorkspace({ params }: { params: Promise<{ orgId: string }> }) {
+  await requireStaff();
   const { orgId } = await params;
   const org = await db.organization.findUnique({
     where: { id: orgId },

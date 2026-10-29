@@ -17,7 +17,12 @@ const LIMITS: { test: (req: NextRequest) => boolean; name: string; max: number; 
   { name: "all", test: (r) => !r.headers.has("next-router-prefetch"), max: 1200, windowMs: 60_000 },
 ];
 
+// Largest request accepted anywhere (CSV imports are the biggest legitimate uploads at 2 MB).
+const MAX_BODY_BYTES = 4 * 1024 * 1024;
+
 export function proxy(request: NextRequest) {
+  const length = Number(request.headers.get("content-length") ?? 0);
+  if (length > MAX_BODY_BYTES) return new NextResponse("Request too large.", { status: 413, headers: { "content-type": "text/plain; charset=utf-8" } });
   const ip = clientIpFrom(request.headers);
   for (const l of LIMITS) {
     if (!l.test(request)) continue;

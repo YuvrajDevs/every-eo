@@ -1,12 +1,9 @@
-import { notFound } from "next/navigation";
 import Link from "next/link";
-import { requireUser } from "@/lib/auth";
-import { isStaff } from "@/lib/staff";
+import { requireStaff } from "@/lib/staff-auth";
 
 // Internal only. Non-staff get a plain 404 so the route's existence isn't confirmed.
 export default async function StaffLayout({ children }: { children: React.ReactNode }) {
-  const { user } = await requireUser();
-  if (!isStaff(user)) notFound();
+  const { user } = await requireStaff();
   return (
     <main className="min-h-screen px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-7xl space-y-6">

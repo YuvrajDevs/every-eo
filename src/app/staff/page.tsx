@@ -1,3 +1,4 @@
+import { requireStaff } from "@/lib/staff-auth";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { workspaceOverview } from "@/lib/staff";
@@ -6,6 +7,7 @@ import { Card, SectionTitle } from "@/components/ui";
 const usd = (m: number) => `$${(m / 1_000_000).toFixed(2)}`;
 
 export default async function StaffHome() {
+  await requireStaff();
   const rows = await workspaceOverview();
   const jobs = await db.job.groupBy({ by: ["status"], _count: { _all: true } });
   const totalCost = rows.reduce((s, r) => s + r.costMicros, 0);

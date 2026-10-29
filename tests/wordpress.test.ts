@@ -60,6 +60,14 @@ describe("WordPress connector against a real WordPress install", { skip: !fs.exi
     await assert.rejects(connectWordPress(domainId, { siteUrl: site.url, username: "admin", appPassword: "aaaa bbbb cccc dddd eeee ffff" }), /application password|rejected the login/i);
   });
 
+  test("plugin endpoints refuse requests with no credentials", async (t) => {
+    if (!site) return t.skip();
+    for (const [method, route] of [["GET", "/status"], ["GET", "/fixes"], ["POST", "/fixes"], ["DELETE", "/fixes/abc"]]) {
+      const res: Response = await fetch(`${site.url}/?rest_route=${encodeURIComponent(`/visibility/v1${route}`)}`, { method, headers: { "content-type": "application/json" }, body: method === "POST" ? JSON.stringify({ id: "x", type: "jsonld", sitewide: true, payload: { data: { "@type": "Thing" } } }) : undefined });
+      assert.equal(res.status, 401, `${method} ${route}`);
+    }
+  });
+
   test("rejects a non-administrator", async (t) => {
     if (!site) return t.skip();
     const pw = site.php(`$u = wp_insert_user(['user_login' => 'writer', 'user_pass' => 'writer-pass-123', 'role' => 'author']); [$p] = WP_Application_Passwords::create_new_application_password($u, ['name' => 't']); echo $p;`).trim();
