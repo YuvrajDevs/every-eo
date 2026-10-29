@@ -20,6 +20,10 @@ model User {
 model Organization {
   id          String       @id @default(cuid())
   name        String
+  kind        String       @default("standard") // standard | agency | client (a client workspace owned by an agency)
+  parentId    String?      // the agency that owns this client workspace
+  parent      Organization?  @relation("AgencyClients", fields: [parentId], references: [id], onDelete: Cascade)
+  clients     Organization[] @relation("AgencyClients")
   plan        String       @default("trial") // see lib/plans.ts
   planStatus  String?      // Stripe subscription status, e.g. active | past_due | canceled
   stripeCustomerId     String? @unique

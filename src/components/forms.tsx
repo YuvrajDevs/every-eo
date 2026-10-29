@@ -33,6 +33,13 @@ export function SignupForm() {
       </div>
       <Field label="Work email" name="email" type="email" autoComplete="email" required />
       <Field label="Password" name="password" type="password" placeholder="At least 10 characters" autoComplete="new-password" required minLength={10} />
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="agency" value="yes" className="mt-1" />
+        <span>
+          I&apos;m an agency managing several clients
+          <span className="block text-xs text-muted">You get a client console and can brand reports as your own.</span>
+        </span>
+      </label>
       <ErrorText state={state} />
       <button disabled={pending} className={`${buttonClass} w-full`}>
         {pending ? "Creating account…" : "Create account"}

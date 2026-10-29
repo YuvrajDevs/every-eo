@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bell, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings, CreditCard } from "lucide-react";
+import { BarChart3, Bell, Building2, Globe, LayoutGrid, LogOut, Radar, Receipt, Settings, CreditCard } from "lucide-react";
 import { logout } from "@/app/actions";
 import { APP_NAME } from "@/lib/brand";
 
@@ -31,7 +31,8 @@ export function Logo() {
   );
 }
 
-export function Sidebar({ userName, orgName, unreadAlerts = 0 }: { userName: string; orgName: string; unreadAlerts?: number }) {
+export function Sidebar({ userName, orgName, unreadAlerts = 0, isAgency = false }: { userName: string; orgName: string; unreadAlerts?: number; isAgency?: boolean }) {
+  const nav = isAgency ? [{ href: "/dashboard/clients", label: "Clients", icon: Building2, match: (p: string) => p.startsWith("/dashboard/clients") }, ...NAV] : NAV;
   const pathname = usePathname();
   const initials = userName
     .split(" ")
@@ -49,7 +50,7 @@ export function Sidebar({ userName, orgName, unreadAlerts = 0 }: { userName: str
         </Link>
 
         <nav className="mt-10 flex flex-col gap-1">
-          {NAV.map(({ href, label, icon: Icon, match }) => {
+          {nav.map(({ href, label, icon: Icon, match }) => {
             const active = match(pathname);
             return (
               <Link
@@ -105,7 +106,7 @@ export function Sidebar({ userName, orgName, unreadAlerts = 0 }: { userName: str
           </form>
         </div>
         <nav className="flex gap-2 overflow-x-auto px-4 pb-3">
-          {NAV.map(({ href, label, icon: Icon, match }) => (
+          {nav.map(({ href, label, icon: Icon, match }) => (
             <Link
               key={href}
               href={href}

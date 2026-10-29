@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { createClientWorkspace, resolveAccess } from "@/lib/access";
 import { createSession, destroySession } from "@/lib/session";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
@@ -27,6 +28,7 @@ import { normalizeHostname, UnsafeUrlError } from "@/lib/url-safety";
 export type FormState = { error?: string } | undefined;
 
 const signupSchema = z.object({
+  agency: z.literal("yes").optional(),
   name: z.string().trim().min(1, "Enter your name").max(100),
   company: z.string().trim().min(1, "Enter your company or agency name").max(100),
   email: z.email("Enter a valid email").trim().toLowerCase(),
@@ -36,14 +38,14 @@ const signupSchema = z.object({
 export async function signup(_: FormState, formData: FormData): Promise<FormState> {
   const parsed = signupSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const { name, company, email, password } = parsed.data;
+  const { name, company, email, password, agency } = parsed.data;
 
   if (await db.user.findUnique({ where: { email } })) {
     return { error: "An account with this email already exists. Log in instead." };
   }
   const passwordHash = await bcrypt.hash(password, 12);
   const { user, org } = await db.$transaction(async (tx) => {
-    const org = await tx.organization.create({ data: { name: company } });
+    const org = await tx.organization.create({ data: { name: company, kind: agency ? "agency" : "standard" } });
     const user = await tx.user.create({ data: { name, email, passwordHash } });
     await tx.membership.create({ data: { userId: user.id, orgId: org.id, role: "owner" } });
     return { user, org };
@@ -352,4 +354,22 @@ export async function startJudgeRun(crawlId: string, _: FormState, formData: For
   await enqueueJob(org.id, "judge", { judgeRunId: run.id });
   revalidatePath(`/dashboard/crawls/${crawlId}`);
   return undefined;
+}
+
+export async function addClient(_: FormState, formData: FormData): Promise<FormState> {
+  const { org } = await requireUser();
+  if (org.kind !== "agency") return { error: "Only agency workspaces can add clients." };
+  const name = String(formData.get("name") ?? "").trim().slice(0, 100);
+  if (name.length < 2) return { error: "Enter the client's name." };
+  await createClientWorkspace(org.id, name);
+  revalidatePath("/dashboard/clients");
+  return undefined;
+}
+
+// Switching only re-issues the session after checking the user may act in the target workspace.
+export async function switchWorkspace(orgId: string) {
+  const { user } = await requireUser();
+  if (!(await resolveAccess(user.id, orgId))) throw new Error("Workspace not found");
+  await createSession({ userId: user.id, orgId });
+  redirect("/dashboard");
 }
