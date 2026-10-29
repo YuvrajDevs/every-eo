@@ -13,6 +13,7 @@ import { parseEntityForm } from "@/lib/entity-form";
 import { loadFixContext } from "@/lib/fix-context";
 import { parseFactsForm } from "@/lib/truth-form";
 import { parseGscQueries } from "@/lib/discovery";
+import { parseDailyCsv, SEARCH_SOURCES } from "@/lib/attribution";
 import { truthCheck } from "@/worker/truth";
 import { planFor, PLANS, type PlanId } from "@/lib/plans";
 import { createCheckout, createPortal } from "@/lib/stripe";
@@ -308,5 +309,22 @@ export async function importGscQueries(domainId: string, _: FormState, formData:
   if (error) return { error };
   await db.$transaction([db.gscQuery.deleteMany({ where: { domainId: domain.id } }), db.gscQuery.createMany({ data: rows.map((r) => ({ ...r, domainId: domain.id })) })]);
   revalidatePath(`/dashboard/visibility/${domain.id}`);
+  return undefined;
+}
+
+export async function importSearchDays(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { domain } = await ownedDomain(domainId);
+  const source = String(formData.get("source") ?? "");
+  if (!(source in SEARCH_SOURCES)) return { error: "Pick which report this file is." };
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose the Dates.csv (or Bing export) file." };
+  if (file.size > MAX_CSV_BYTES) return { error: "That file is over 2 MB." };
+  const { days, error } = parseDailyCsv(await file.text());
+  if (error) return { error };
+  await db.$transaction([
+    db.searchDay.deleteMany({ where: { domainId: domain.id, source } }),
+    db.searchDay.createMany({ data: days.map((d) => ({ domainId: domain.id, source, ...d })) }),
+  ]);
+  revalidatePath(`/dashboard/attribution/${domain.id}`);
   return undefined;
 }

@@ -66,6 +66,7 @@ model Domain {
   shopify        ShopifyConnection?
   facts          FactsRecord?
   gscQueries     GscQuery[]
+  searchDays     SearchDay[]
   truthIssues    TruthIssue[]
   fixes          Fix[]
   crawls         Crawl[]
@@ -358,4 +359,18 @@ model GscQuery {
   importedAt  DateTime @default(now())
 
   @@index([domainId])
+}
+
+// Daily search performance imported from Search Console or Bing Webmaster Tools exports.
+// source: gsc_branded | gsc_all | bing_branded | bing_all
+model SearchDay {
+  id          String   @id @default(cuid())
+  domainId    String
+  source      String
+  date        DateTime // UTC midnight
+  clicks      Int
+  impressions Int
+  domain      Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([domainId, source, date])
 }
