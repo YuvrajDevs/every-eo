@@ -63,6 +63,8 @@ model Domain {
   entity         EntityRecord?
   wordpress      WpConnection?
   shopify        ShopifyConnection?
+  facts          FactsRecord?
+  truthIssues    TruthIssue[]
   fixes          Fix[]
   crawls         Crawl[]
   prompts        Prompt[]
@@ -85,6 +87,7 @@ model Prompt {
 }
 
 model VisibilityRun {
+  truthIssues TruthIssue[]
   id         String             @id @default(cuid())
   orgId      String
   domainId   String
@@ -309,4 +312,32 @@ model ShopifyConnection {
   installationId String?  // AppInstallation gid, owner of the app-data metafields the theme embed reads
   domain         Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
   createdAt      DateTime @default(now())
+}
+
+// Ground truth the owner provides (prices, founding year, discontinued products, signature claims, competitors).
+model FactsRecord {
+  id        String   @id @default(cuid())
+  domainId  String   @unique
+  data      String   // JSON BrandFacts (lib/truth.ts)
+  domain    Domain   @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
+}
+
+// A sentence in a stored AI answer that contradicts the owner's facts or credits their claim to someone else.
+model TruthIssue {
+  id        String        @id @default(cuid())
+  domainId  String
+  runId     String
+  resultId  String
+  engine    String
+  promptId  String
+  kind      String        // price_mismatch | discontinued_as_current | wrong_founding_year | stolen_claim
+  sentence  String
+  detail    String
+  credited  String?
+  domain    Domain        @relation(fields: [domainId], references: [id], onDelete: Cascade)
+  run       VisibilityRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@index([runId])
 }

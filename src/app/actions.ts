@@ -11,6 +11,8 @@ import { createSession, destroySession } from "@/lib/session";
 import { nextRun, SCHEDULES, startCrawl, startVisibility } from "@/lib/jobs";
 import { parseEntityForm } from "@/lib/entity-form";
 import { loadFixContext } from "@/lib/fix-context";
+import { parseFactsForm } from "@/lib/truth-form";
+import { truthCheck } from "@/worker/truth";
 import { planFor, PLANS, type PlanId } from "@/lib/plans";
 import { createCheckout, createPortal } from "@/lib/stripe";
 import { applyFix, connectWordPress, rollbackFix, verifyFix } from "@/lib/fix-engine";
@@ -271,4 +273,17 @@ export async function openBillingPortal() {
   const { org } = await requireUser();
   if (!org.stripeCustomerId) throw new Error("No billing account yet");
   redirect(await createPortal(org.stripeCustomerId, await appBaseUrl()));
+}
+
+export async function saveFacts(domainId: string, _: FormState, formData: FormData): Promise<FormState> {
+  const { domain } = await ownedDomain(domainId);
+  const parsed = parseFactsForm(formData);
+  if (!parsed.success) return { error: parsed.error };
+  const data = JSON.stringify(parsed.data);
+  await db.factsRecord.upsert({ where: { domainId: domain.id }, update: { data }, create: { domainId: domain.id, data } });
+  // Re-check the latest stored answers right away; this reads saved text only and makes no AI calls.
+  const run = await db.visibilityRun.findFirst({ where: { domainId: domain.id, status: "completed" }, orderBy: { createdAt: "desc" } });
+  if (run) await truthCheck(run.id, { alert: false });
+  revalidatePath(`/dashboard/truth/${domain.id}`);
+  return undefined;
 }

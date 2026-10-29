@@ -249,6 +249,9 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
             <Link href={`/dashboard/entity/${domain.id}`} className="mt-3 inline-block text-xs underline underline-offset-4">
               Build your full brand profile and schema →
             </Link>
+            <Link href={`/dashboard/truth/${domain.id}`} className="mt-2 block text-xs underline underline-offset-4">
+              Check what AI says about you is accurate →
+            </Link>
           </Card>
 
           <Card className="bg-panel">

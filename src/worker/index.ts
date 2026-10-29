@@ -5,6 +5,7 @@ import { runCrawl } from "@/worker/crawl";
 import { runVisibility } from "@/worker/visibility/run";
 import { runDueSchedules } from "@/worker/scheduler";
 import { crawlAlerts, visibilityAlerts } from "@/worker/alerts";
+import { truthCheck } from "@/worker/truth";
 
 const POLL_MS = 2000;
 const MAX_ATTEMPTS = 3;
@@ -50,7 +51,8 @@ async function execute(type: string, payload: unknown) {
     case "visibility": {
       const { runId } = payload as JobPayloads["visibility"];
       await runVisibility(runId);
-      return safeAlerts(() => visibilityAlerts(runId));
+      await safeAlerts(() => visibilityAlerts(runId));
+      return safeAlerts(() => truthCheck(runId));
     }
     default:
       throw new Error(`Unknown job type: ${type}`);
