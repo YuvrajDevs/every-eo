@@ -36,6 +36,8 @@ export default async function FixesPage({ params, searchParams }: { params: Prom
   const platform = (crawl?.platform ?? "unknown") as PlatformId;
   const isShopify = platform === "shopify" || Boolean(domain.shopify);
   const autoFix = isShopify || platform === "wordpress" || (platform === "unknown" && Boolean(domain.wordpress));
+  // Detection can miss WordPress (e.g. hidden generator tags), so unknown sites can still connect the plugin.
+  const showWpCard = !isShopify && (platform === "wordpress" || platform === "unknown");
   const connected = isShopify ? Boolean(domain.shopify) : Boolean(domain.wordpress);
   const canApply = (p: (typeof proposals)[number]) => autoFix && (!isShopify || shopifySupports(p));
   const active = new Map(domain.fixes.filter((f) => f.status !== "rolled_back").map((f) => [f.key, f]));
@@ -94,9 +96,9 @@ export default async function FixesPage({ params, searchParams }: { params: Prom
         </Card>
       )}
 
-      {crawl && autoFix && !isShopify && (
+      {crawl && showWpCard && (
         <Card>
-          <SectionTitle>WordPress connection</SectionTitle>
+          <SectionTitle>{platform === "unknown" && !connected ? "Is this a WordPress site?" : "WordPress connection"}</SectionTitle>
           {connected ? (
             <div className="space-y-2 text-sm">
               <p>
@@ -134,7 +136,7 @@ export default async function FixesPage({ params, searchParams }: { params: Prom
         <Card className="bg-sky">
           <p className="font-semibold">Automatic fixes aren&apos;t available for {PLATFORM_LABELS[platform]} sites yet.</p>
           <p className="mt-1 text-sm text-ink/75">
-            Below is exactly what to add and where. {platform === "unknown" ? "If this is actually a WordPress site, connect it to apply fixes automatically." : ""}
+            Below is exactly what to add and where. {platform === "unknown" ? "If this is actually a WordPress site, connect it above to apply fixes automatically." : ""}
           </p>
         </Card>
       )}

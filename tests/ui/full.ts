@@ -223,20 +223,115 @@ async function main() {
   assert.ok(!/NaN|undefined/.test(body));
   step("failed AI calls: every trial recorded as an error, no auto-retry, clear error card");
 
+  console.log("Brand profile");
+  await a.goto(`${BASE}/dashboard/entity/${domain.id}`);
+  await a.fill("input[name=foundingDate]", "April 2019");
+  await a.click("button:has-text('Save and generate')");
+  await a.waitForSelector("text=Use YYYY");
+  step("invalid founding date shows a validation error");
+  await a.fill("input[name=foundingDate]", "2019-04");
+  await a.fill("input[name=logo]", "https://acme.example/logo.png");
+  await a.fill("textarea[name=description]", "Remote mail scanning for small businesses.");
+  await a.fill("textarea[name=sameAs]", "https://www.linkedin.com/company/acme\nhttps://www.crunchbase.com/organization/acme");
+  await a.fill("input[name='author.0.name']", "Dana Lee");
+  await a.fill("input[name='author.0.jobTitle']", "Head of Ops");
+  await a.click("button:has-text('Save and generate')");
+  await a.waitForSelector("text=Organization schema (homepage <head>)");
+  body = await text(a);
+  assert.ok(body.includes("Dana Lee: Person schema") && body.includes("Wikidata draft") && body.includes("P4264"));
+  const saved = JSON.parse((await db.entityRecord.findUniqueOrThrow({ where: { domainId: domain.id } })).data);
+  assert.equal(saved.authors[0].name, "Dana Lee");
+  assert.equal(saved.sameAs.length, 2);
+  step("brand profile saves and generates Organization/Person schema, bio and Wikidata draft");
+
+  console.log("Fixes");
+  await a.goto(`${BASE}/dashboard/fixes/${domain.id}`);
+  body = await text(a);
+  assert.ok(body.includes("Is this a WordPress site?"), "unknown platform can still connect WordPress");
+  assert.ok(body.includes("Automatic fixes aren't available for Custom or unknown sites"));
+  assert.ok(body.includes("Allow PerplexityBot in robots.txt"), "robots fix suggested");
+  assert.ok(body.includes("Add complete Organization schema to the homepage"), "org fix unlocked by brand profile");
+  assert.ok(body.includes("User-agent: PerplexityBot") && body.includes('"sameAs"'), "manual code shown");
+  step("fixes page: manual mode with copy-paste code for a non-WordPress site");
+  await a.fill("input[name=username]", "admin");
+  await a.fill("input[name=appPassword]", "aaaa bbbb cccc dddd");
+  await a.fill("input[name=siteUrl]", "http://localhost:3100");
+  await a.click("button:has-text('Connect')");
+  await a.waitForSelector("text=Blocked non-public address");
+  assert.equal(await db.wpConnection.count(), 0);
+  step("connecting WordPress to a private address is refused (SSRF guard holds in production)");
+  const zipRes = await a.request.get(`${BASE}/api/plugin`);
+  assert.equal(zipRes.headers()["content-type"], "application/zip");
+  const JSZip = (await import("jszip")).default;
+  const zip = await JSZip.loadAsync(await zipRes.body());
+  assert.ok(zip.file("visibility-connector/visibility-connector.php") && zip.file("visibility-connector/includes/robots.php"));
+  step("plugin download is a valid zip with the plugin files");
+
+  console.log("Schedules and alerts");
+  await a.goto(`${BASE}/dashboard/visibility/${domain.id}`);
+  await a.selectOption("select[name=auditSchedule]", "weekly");
+  await a.click("button:has-text('Save schedule')");
+  await waitFor(async () => (await db.domain.findUniqueOrThrow({ where: { id: domain.id } })).auditSchedule === "weekly", "schedule saved", 10_000);
+  const next = (await db.domain.findUniqueOrThrow({ where: { id: domain.id } })).nextAuditAt!;
+  assert.ok(Math.abs(next.getTime() - Date.now() - 7 * 86_400_000) < 120_000, "next audit in ~7 days");
+  step("weekly audit schedule saves with the next run a week out");
+  await db.alert.create({ data: { orgId: org.id, domainId: domain.id, kind: "visibility_drop", title: "ChatGPT stopped linking to you for “best mail”", detail: "Linked 5/5 → 0/5", link: `/dashboard/visibility/${domain.id}` } });
+  await a.goto(`${BASE}/dashboard`);
+  assert.equal((await a.locator("aside a[href='/dashboard/alerts'] span.bg-high").textContent())?.trim(), "1");
+  await a.goto(`${BASE}/dashboard/alerts`);
+  assert.ok((await text(a)).includes("ChatGPT stopped linking to you"));
+  await a.click("button:has-text('Mark all read')");
+  await waitFor(async () => (await db.alert.count({ where: { readAt: null } })) === 0, "alerts read", 10_000);
+  await a.goto(`${BASE}/dashboard`);
+  assert.equal(await a.locator("aside a[href='/dashboard/alerts'] span.bg-high").count(), 0);
+  step("alert shows in the sidebar badge and alerts page, and mark-all-read clears it");
+
+  console.log("Billing and plan limits");
+  await a.goto(`${BASE}/dashboard/billing`);
+  body = await text(a);
+  assert.ok(body.includes("Trial plan") && body.includes("AI answers this month") && body.includes("Online payment isn't set up yet"));
+  assert.equal(await a.locator("button:has-text('Choose Growth')").isDisabled(), true);
+  step("billing page shows plan, usage meters, and disabled upgrades without Stripe");
+  await a.goto(`${BASE}/dashboard/sites`);
+  await a.fill("input[name=domain]", "example.org");
+  await a.click("form:has(input[name=domain]) button");
+  await a.waitForURL(/\/dashboard\/crawls\//);
+  await a.goto(`${BASE}/dashboard/sites`);
+  await a.fill("input[name=domain]", "example.net");
+  await a.click("form:has(input[name=domain]) button");
+  await a.waitForSelector("text=Your Trial plan includes 3 sites");
+  assert.equal(await db.domain.count({ where: { orgId: org.id } }), 3);
+  step("site limit enforced at the plan's 3 sites");
+
+  console.log("Phone width");
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, storageState: await ctxA.storageState() });
+  const m = await phone.newPage();
+  const overflowing: string[] = [];
+  for (const path of ["/dashboard", "/dashboard/sites", `/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, "/dashboard/visibility", `/dashboard/visibility/${domain.id}`, `/dashboard/entity/${domain.id}`, `/dashboard/fixes/${domain.id}`, "/dashboard/alerts", "/dashboard/costs", "/dashboard/billing"]) {
+    await m.goto(`${BASE}${path}`);
+    const w = await m.evaluate(() => document.documentElement.scrollWidth);
+    if (w > 390) overflowing.push(`${path} (${w}px)`);
+  }
+  assert.deepEqual(overflowing, [], "pages scroll sideways on a phone");
+  await phone.close();
+  step("no page scrolls sideways at phone width (390px)");
+
   console.log("Tenant isolation");
   const ctxB = await browser.newContext();
   const b = await ctxB.newPage();
   await signup(b, "Bob", "bob@example.com");
   await b.waitForURL(/\/dashboard/);
-  for (const path of [`/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, `/dashboard/visibility/${domain.id}`]) {
+  for (const path of [`/dashboard/crawls/${crawlId}`, `/dashboard/crawls/${crawlId}/report`, `/dashboard/visibility/${domain.id}`, `/dashboard/entity/${domain.id}`, `/dashboard/fixes/${domain.id}`]) {
     const res = await b.goto(`${BASE}${path}`);
     assert.equal(res?.status(), 404, `Bob could open Alice's ${path}`);
   }
-  step("another organisation gets 404 on crawl, report and visibility pages");
+  step("another organisation gets 404 on crawl, report, visibility, brand profile and fixes pages");
   await b.goto(`${BASE}/dashboard/sites`);
   assert.ok(!(await text(b)).includes("localhost") && !(await text(b)).includes("example.com"));
   await b.goto(`${BASE}/dashboard/costs`);
   assert.ok(!(await text(b)).includes("ChatGPT"));
+  await b.goto(`${BASE}/dashboard/alerts`);
+  assert.ok((await text(b)).includes("No alerts yet"));
   step("sites and costs lists contain no other organisation's data");
   assert.ok((await db.membership.count()) === 2);
 
