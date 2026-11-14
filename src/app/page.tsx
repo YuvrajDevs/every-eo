@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { PublicShell } from "@/components/public-shell";
 import { PublicAuditForm } from "@/components/public-audit-form";
-import { TONES, buttonClass, type Tone } from "@/components/ui";
+import { ScoreRing, buttonClass } from "@/components/ui";
 
 const STEPS = [
   { n: "01", title: "Audit", body: "We read your site like Google and AI crawlers do, and list what stops you ranking or being recommended, most urgent first." },
@@ -21,13 +21,13 @@ const STEPS = [
   { n: "03", title: "Track", body: "We ask ChatGPT, Claude, Gemini and Perplexity the questions your customers ask, and show how often they mention you." },
 ];
 
-const FEATURES: { title: string; body: string; tone: Tone; icon: typeof Bot }[] = [
-  { title: "AI crawler access", body: "See which AI crawlers can read your site, and catch firewalls that silently block them.", tone: "lavender", icon: Bot },
-  { title: "Full technical audit", body: "Broken pages, titles, sitemaps, structured data, speed and how quotable each page is.", tone: "peach", icon: ListChecks },
-  { title: "One-click fixes", body: "Structured data, descriptions and AI-crawler rules applied, checked on your live site, and reversible.", tone: "mint", icon: Wrench },
-  { title: "AI mention tracking", body: "How often each AI engine mentions you, with an honest range instead of a made-up precise score.", tone: "sky", icon: MessageSquareQuote },
-  { title: "Wrong-facts monitor", body: "Get told when AI states a wrong price or a discontinued product, or credits your claims to a competitor.", tone: "rose", icon: ShieldCheck },
-  { title: "Competitors and trends", body: "Your share of AI mentions against competitors, who leads each question, and how it changes.", tone: "lime", icon: BarChart3 },
+const FEATURES: { title: string; body: string; icon: typeof Bot }[] = [
+  { title: "AI crawler access", body: "See which AI crawlers can read your site, and catch firewalls that silently block them.", icon: Bot },
+  { title: "Full technical audit", body: "Broken pages, titles, sitemaps, structured data, speed and how quotable each page is.", icon: ListChecks },
+  { title: "One-click fixes", body: "Structured data, descriptions and AI-crawler rules applied, checked on your live site, and reversible.", icon: Wrench },
+  { title: "AI mention tracking", body: "How often each AI engine mentions you, with an honest range instead of a made-up precise score.", icon: MessageSquareQuote },
+  { title: "Wrong-facts monitor", body: "Get told when AI states a wrong price or a discontinued product, or credits your claims to a competitor.", icon: ShieldCheck },
+  { title: "Competitors and trends", body: "Your share of AI mentions against competitors, who leads each question, and how it changes.", icon: BarChart3 },
 ];
 
 const DIFFERENT = [
@@ -63,7 +63,7 @@ export default function Home() {
         <div>
           <p className="w-fit rounded-full bg-lime px-3 py-1 text-xs font-medium">SEO · AEO · GEO in one place</p>
           <h1 className="mt-5 font-display text-5xl leading-[1.08] sm:text-6xl">
-            Get found on Google and <span className="rounded-2xl bg-highlight box-decoration-clone px-2 text-on-highlight">recommended by AI.</span>
+            Get found on Google and recommended by AI.
           </h1>
           <p className="mt-5 max-w-xl text-lg text-muted">
             We audit your site for search engines and AI assistants, fix what&apos;s holding you back, and track whether ChatGPT,
@@ -93,9 +93,9 @@ export default function Home() {
       <section className="py-10">
         <h2 className="font-display text-3xl sm:text-4xl">Everything you need to be visible</h2>
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map(({ title, body, tone, icon: Icon }) => (
-            <div key={title} className={`flex min-h-[200px] flex-col justify-between rounded-3xl p-6 ${TONES[tone]}`}>
-              <span className="grid size-11 place-items-center rounded-full bg-white/70">
+          {FEATURES.map(({ title, body, icon: Icon }) => (
+            <div key={title} className="flex min-h-[200px] flex-col justify-between rounded-[22px] bg-surface p-6">
+              <span className="grid size-11 place-items-center rounded-full bg-ink/[0.06] ring-1 ring-ink/10">
                 <Icon className="size-5" strokeWidth={1.75} />
               </span>
               <div>
@@ -196,7 +196,7 @@ function SampleReport() {
   return (
     <div className="space-y-3 rounded-[2rem] bg-surface p-4 sm:p-5" aria-label="Example report">
       <div className="flex items-center gap-4 rounded-3xl bg-dark p-5 text-on-dark">
-        <div className="relative grid size-16 place-items-center rounded-full border-4 border-ok font-display text-xl">82</div>
+        <ScoreRing score={82} size={64} label="Example technical health" />
         <div>
           <p className="font-display text-xl">Technical health</p>
           <p className="text-xs text-on-dark/65">2 urgent fixes would raise this the most.</p>

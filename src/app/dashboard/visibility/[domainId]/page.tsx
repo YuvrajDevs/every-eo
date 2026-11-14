@@ -132,7 +132,7 @@ export default async function DomainVisibilityPage({ params }: { params: Promise
             const ci = wilson(c.mentioned, c.total);
             const ran = runEngines.includes(e.id);
             return (
-              <div key={e.id} className={`flex flex-col justify-between gap-4 rounded-3xl p-5 ${ran ? TONES[ENGINE_TONES[e.id]] : "bg-surface"}`}>
+              <div key={e.id} className={`flex flex-col justify-between gap-4 rounded-3xl p-5 ${ran ? TONES[ENGINE_TONES[e.id]] : "bg-surface opacity-60"}`}>
                 <p className="text-sm font-semibold">{e.label}</p>
                 {ran && c.total > 0 ? (
                   <div>

@@ -1,37 +1,42 @@
 @import "tailwindcss";
 
+/*
+  Instrument-panel theme: a near-black canvas, flat graphite panels and one warm amber accent.
+  Colour is reserved for meaning: amber = primary action / focus, green = good, red = needs attention,
+  blue = neutral readout. Tinted panels (lavender, mint…) are very low-chroma so data stays the loudest thing.
+*/
 :root {
-  --bg: #ffffff;
-  --surface: #f5f5f2;
-  --panel: #ffffff;
-  --ink: #1c1d29;
-  --muted: #676a7c;
-  --line: #e5e5df;
-  /* Dark accent blocks (welcome banner, score cards) keep their own light text. */
-  --dark: #1f2132;
-  --on-dark: #f5f6fa;
-  --accent: #1c1d29;
-  --accent-ink: #ffffff;
+  --bg: #070708;
+  --frame: #0d0d0f; /* the rounded app frame beside the rail */
+  --surface: #131315; /* panels */
+  --panel: #1c1c1f; /* tiles and controls inside panels */
+  --ink: #f1f1ee;
+  --muted: #8b8b91;
+  --line: #26262a;
+  --dark: #19191c; /* emphasised panels (welcome, score) */
+  --on-dark: #f1f1ee;
+  --accent: #f1f1ee; /* primary button: light pill on dark */
+  --accent-ink: #0c0c0d;
 
-  /* Bright pastels for colored cards; dark text stays readable on all of them. */
-  --lavender: #dcd2ff;
-  --peach: #ffdcbc;
-  --mint: #c3f1da;
-  --rose: #ffd3d5;
-  --lime: #ecf66e;
-  --sky: #cfe5ff;
+  --lavender: #1c1b26;
+  --peach: #241c14;
+  --mint: #132019;
+  --rose: #261517;
+  --lime: #1f2011;
+  --sky: #121b25;
 
-  --highlight: #e4f45c;
-  --on-highlight: #1c1d29;
+  --highlight: #f2c14e;
+  --on-highlight: #141310;
 
-  --high: #c62f36;
-  --medium: #b45f06;
-  --low: #3767a8;
-  --ok: #18784a;
+  --high: #f2645f;
+  --medium: #f0a64b;
+  --low: #6ea8e8;
+  --ok: #4cc98b;
 }
 
 @theme inline {
   --color-bg: var(--bg);
+  --color-frame: var(--frame);
   --color-surface: var(--surface);
   --color-panel: var(--panel);
   --color-ink: var(--ink);
@@ -59,13 +64,17 @@
 }
 
 html {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 /* Example text in empty fields stays clearly lighter than real values. */
 ::placeholder {
   color: color-mix(in srgb, var(--muted) 65%, transparent);
   opacity: 1;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--highlight) 35%, transparent);
 }
 
 body {
@@ -75,11 +84,27 @@ body {
   line-height: 1.55;
 }
 
+/* One consistent, visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 2px solid var(--highlight);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 @layer components {
   .font-display {
     font-family: var(--font-display);
     font-weight: 600;
     letter-spacing: -0.025em;
     line-height: 1.1;
+    font-variant-numeric: tabular-nums;
   }
 }

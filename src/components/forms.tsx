@@ -83,18 +83,18 @@ export function AddDomainForm({ variant = "light" }: { variant?: "light" | "dark
   const dark = variant === "dark";
   return (
     <form action={action} className="space-y-2">
-      <div className={`flex items-center gap-2 rounded-full p-1.5 ${dark ? "bg-surface" : "border border-line bg-surface"}`}>
+      <div className="flex items-center gap-2 rounded-full bg-panel p-1.5 ring-1 ring-line transition focus-within:ring-highlight/50">
         <input
           name="domain"
           placeholder="yourwebsite.com"
           required
           aria-label="Website domain"
-          className="min-w-0 flex-1 bg-transparent px-4 py-2 text-ink outline-none placeholder:text-muted/60"
+          className="min-w-0 flex-1 bg-transparent px-4 py-2 text-ink outline-none placeholder:text-muted/60 focus-visible:outline-none"
         />
         <button
           disabled={pending}
-          className={`inline-flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 font-medium transition hover:opacity-85 disabled:opacity-50 ${
-            dark ? "bg-highlight text-on-highlight" : "bg-ink text-accent-ink"
+          className={`inline-flex shrink-0 items-center gap-2 rounded-full px-5 py-2.5 font-medium transition hover:opacity-90 disabled:opacity-50 ${
+            dark ? "bg-highlight text-on-highlight" : "bg-accent text-accent-ink"
           }`}
         >
           {pending ? "Starting…" : "Run audit"}

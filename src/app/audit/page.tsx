@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Bot, Gauge, ListChecks, MessageSquareQuote } from "lucide-react";
 import { PublicShell } from "@/components/public-shell";
 import { PublicAuditForm } from "@/components/public-audit-form";
-import { TONES, type Tone } from "@/components/ui";
 import { PUBLIC_MAX_PAGES } from "@/lib/public-audit";
 import { APP_NAME } from "@/lib/brand";
 
@@ -11,11 +10,11 @@ export const metadata: Metadata = {
   description: "Check in a minute whether Google and AI assistants can read your site, what to fix first, and whether AI mentions you.",
 };
 
-const CHECKS: { title: string; body: string; tone: Tone; icon: typeof Bot }[] = [
-  { title: "Can AI read your site?", body: "We test the crawlers behind ChatGPT, Claude, Perplexity and Google, including firewalls that block them.", tone: "lavender", icon: Bot },
-  { title: "What to fix first", body: `We read up to ${PUBLIC_MAX_PAGES} pages and rank the issues that most hold you back.`, tone: "peach", icon: ListChecks },
-  { title: "Does AI mention you?", body: "Add a question your customers ask and we ask Gemini three times.", tone: "mint", icon: MessageSquareQuote },
-  { title: "One clear score", body: "A technical health score out of 100, with every fix graded by how strong the evidence is.", tone: "sky", icon: Gauge },
+const CHECKS: { title: string; body: string; icon: typeof Bot }[] = [
+  { title: "Can AI read your site?", body: "We test the crawlers behind ChatGPT, Claude, Perplexity and Google, including firewalls that block them.", icon: Bot },
+  { title: "What to fix first", body: `We read up to ${PUBLIC_MAX_PAGES} pages and rank the issues that most hold you back.`, icon: ListChecks },
+  { title: "Does AI mention you?", body: "Add a question your customers ask and we ask Gemini three times.", icon: MessageSquareQuote },
+  { title: "One clear score", body: "A technical health score out of 100, with every fix graded by how strong the evidence is.", icon: Gauge },
 ];
 
 export default async function FreeAuditPage({ searchParams }: { searchParams: Promise<{ site?: string }> }) {
@@ -34,9 +33,9 @@ export default async function FreeAuditPage({ searchParams }: { searchParams: Pr
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {CHECKS.map(({ title, body, tone, icon: Icon }) => (
-          <div key={title} className={`flex min-h-[190px] flex-col justify-between rounded-3xl p-5 ${TONES[tone]}`}>
-            <span className="grid size-10 place-items-center rounded-full bg-white/70">
+        {CHECKS.map(({ title, body, icon: Icon }) => (
+          <div key={title} className="flex min-h-[190px] flex-col justify-between rounded-[22px] bg-surface p-5">
+            <span className="grid size-10 place-items-center rounded-full bg-ink/[0.06] ring-1 ring-ink/10">
               <Icon className="size-5" strokeWidth={1.75} />
             </span>
             <div>
