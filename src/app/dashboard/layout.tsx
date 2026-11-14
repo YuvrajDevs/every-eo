@@ -20,7 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           {agency && (
             <form action={switchWorkspace.bind(null, agency.id)} className="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-panel px-4 py-2.5 text-xs">
               <span>
-                Client workspace: <strong>{org.name}</strong> · managed by {agency.name}
+                Client workspace: <strong>{org.name}</strong> · managed by {brand.name}
               </span>
               <button className="rounded-full bg-surface px-3 py-1 hover:bg-line">Back to all clients</button>
             </form>

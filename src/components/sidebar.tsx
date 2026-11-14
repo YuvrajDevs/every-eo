@@ -107,8 +107,11 @@ export function Sidebar({
     <>
       {/* Desktop: slim icon rail */}
       <aside className="sticky top-0 hidden h-screen w-[76px] shrink-0 flex-col items-center gap-2 py-5 lg:flex" aria-label="Main">
-        <Link href="/dashboard" aria-label={`${brandName ?? APP_NAME} overview`} className="mb-5">
+        <Link href="/dashboard" aria-label={`${brandName ?? APP_NAME} overview`} className="group relative mb-5">
           <LogoMark logoUrl={brandLogoUrl} size={38} />
+          <span className="pointer-events-none absolute left-full top-1/2 z-20 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-panel px-2.5 py-1.5 text-xs font-medium text-ink opacity-0 shadow-lg shadow-black/40 ring-1 ring-line transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            {brandName ?? APP_NAME}
+          </span>
         </Link>
         <nav className="flex flex-col items-center gap-1.5">
           {primary.map((item) => (
